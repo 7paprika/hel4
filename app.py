@@ -172,7 +172,7 @@ st.subheader("3. 기하학적 설계 및 기계 설계 (ASME Sec.VIII)")
 col_g1, col_g2, col_g3, col_g4 = st.columns(4)
 
 with col_g1:
-    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시켜 튜브 내 유속과 ΔP를 획기적으로 낮춥니다.")
+    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시킵니다. 주의: N_p가 커지면 튜브 한 가닥의 상승각(Lead)이 가팔라집니다.")
     
     do_options = {'3/8" (9.53 mm)': 9.53, '1/2" (12.7 mm)': 12.7, '3/4" (19.05 mm)': 19.05, '1" (25.4 mm)': 25.4, 'Custom (직접 입력)': -1}
     do_keys = list(do_options.keys())
@@ -233,7 +233,7 @@ with col_g2:
     st.caption(f"💡 추천 최적값: **{max(10.0, st.session_state['D_c'] - st.session_state['d_o'] - 10.0):.1f} mm**")
 
 with col_g3:
-    st.number_input("코일 피치 (p, mm)", step=1.0, key='pitch', help="튜브 간 간섭 방지를 위해 외경의 1.25배 이상")
+    st.number_input("코일 피치 (p, mm)", step=1.0, key='pitch', help="서로 다른 인접 튜브 중심 간의 수직 거리입니다. (Lead 아님)")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 1.25:.1f} mm**")
     
     st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s', help="최소 40mm 이상의 클리어런스 필요")
@@ -263,13 +263,13 @@ with col_g4:
     st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
     st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값")
     
-    st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적(Req. Area)에 추가할 안전 여유율 (통상 10~20% 권장)")
+    st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적에 추가할 안전 여유율")
     
     with st.expander("💡 TEMA 오염계수(Fouling) 레퍼런스"):
         st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
 
 # =========================================================
-# [F] 4. 수력학 코어 연산 (3D 피타고라스 기하학 완벽 반영)
+# [F] 4. 수력학 코어 연산 (🌟 3D 기하학 Lead 보정 적용)
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -307,8 +307,6 @@ m_cold_kg_s = m_s / 3600.0
 D_s_m = st.session_state['D_s'] / 1000.0
 D_man_m = st.session_state['D_mandrel'] / 1000.0
 d_o_m = st.session_state['d_o'] / 1000.0
-p_m = st.session_state['pitch'] / 1000.0
-D_c_m = st.session_state['D_c'] / 1000.0
 
 A_annulus = (np.pi / 4.0) * (D_s_m**2 - D_man_m**2)
 A_free_flow = A_annulus * 0.5 
@@ -326,18 +324,27 @@ U_calc = 1.0 / ((1.0 / max(h_o, 0.1)) + st.session_state['R_fo'] + R_wall + st.s
 Area_req = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
 Area_design = Area_req * (1.0 + st.session_state['overdesign_pct'] / 100.0)
 
-# 🌟 기하학적 수식 오류 완벽 보정 (3D Helix Length) 🌟
-Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
-Length_per_Tube = Total_Tube_Length / max(1, st.session_state['N_p'])
+# =========================================================
+# 🌟 기하학 치명적 오류 수정 (Pitch vs Lead) 🌟
+# =========================================================
+N_p_val = max(1, st.session_state['N_p'])
+p_m = st.session_state['pitch'] / 1000.0
+D_c_m = st.session_state['D_c'] / 1000.0
 
-# 1회전 길이 = 피타고라스 정리 (원주^2 + 피치^2)의 제곱근
-Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + p_m**2) if D_c_m > 0 else 1.0
+# 리드(Lead) = 피치(p) * 병렬 튜브 수(N_p). 튜브 한 가닥이 1회전 시 상승하는 진짜 높이
+Lead_m = p_m * N_p_val
+
+Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
+Length_per_Tube = Total_Tube_Length / N_p_val
+
+# 1회전당 튜브 길이 (피타고라스 정리: 밑변=원주, 높이=리드)
+Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + Lead_m**2) if D_c_m > 0 else 1.0
 Turns_per_Tube = Length_per_Tube / Length_per_Turn
 
 dp_tube_bar = (f_c * (Length_per_Tube / (max(1e-6, d_i) / 1000.0)) * (st.session_state['t_rho'] * (v_tube ** 2) / 2.0)) / 100000.0
 
-# 쉘 코일부 수직 높이는 (권선수 * 피치)
-L_shell_m = Turns_per_Tube * p_m
+# 쉘 코일부 수직 높이 = 권선 수 * 리드
+L_shell_m = Turns_per_Tube * Lead_m
 f_s = 0.316 / (max(Re_shell, 1.0)**0.25) 
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
@@ -381,7 +388,7 @@ datasheet_md = f"""
 | Calc. Press. Drop (bar)| **{dp_tube_bar:.3f}** (Allow: {st.session_state['allowable_dp_tube']}) | **{dp_shell_bar:.3f}** (Allow: {st.session_state['allowable_dp_shell']}) | |
 | **Mechanical Design** | | | |
 | Tube OD x Thick. (mm) | {st.session_state['d_o']} x {st.session_state['t_thick']} | Tube Material | {st.session_state['tube_material']} |
-| Shell OD x Thick. (mm) | **{shell_od:.1f} x {st.session_state['shell_thick']:.0f}** | Coil Pitch (mm) | {st.session_state['pitch']} |
+| Shell OD x Thick. (mm) | **{shell_od:.1f} x {st.session_state['shell_thick']:.0f}** | Coil Pitch (Gap, mm) | {st.session_state['pitch']} |
 | Coil Center Dia. (mm) | {st.session_state['D_c']} | Shell ID / Mandrel OD | {st.session_state['D_s']} mm / {st.session_state['D_mandrel']} mm |
 | Parallel Coils (N_p) | **{st.session_state['N_p']} ea** | Turns per Tube | {Turns_per_Tube:,.1f} |
 | Length per Tube (m) | {Length_per_Tube:,.1f} | **Shell T/T Length (mm)** | **{Shell_TT_Length_mm:,.0f} mm** |
@@ -440,7 +447,7 @@ html_report = f"""
         <tr><th>Tube OD x Thick.</th><td>{st.session_state['d_o']} mm x {st.session_state['t_thick']} mm</td><th>Tube Material</th><td>{st.session_state['tube_material']}</td></tr>
         <tr><th>Shell OD x Thick.</th><td>{shell_od:.1f} mm x {st.session_state['shell_thick']:.0f} mm</td><th>Shell Design Press.</th><td>{st.session_state['design_p_shell']} bar</td></tr>
         <tr><th>Coil Center Dia. (D_c)</th><td>{st.session_state['D_c']} mm</td><th>Shell ID / Mandrel OD</th><td>{st.session_state['D_s']} mm / {st.session_state['D_mandrel']} mm</td></tr>
-        <tr><th>Parallel Coils (N_p)</th><td>{st.session_state['N_p']} ea</td><th>Coil Pitch</th><td>{st.session_state['pitch']} mm</td></tr>
+        <tr><th>Parallel Coils (N_p)</th><td>{st.session_state['N_p']} ea</td><th>Coil Pitch (Gap)</th><td>{st.session_state['pitch']} mm</td></tr>
         <tr><th>Turns per Tube</th><td>{Turns_per_Tube:,.1f} turns</td><th>Length per Tube</th><td>{Length_per_Tube:,.1f} m</td></tr>
         <tr><th>Shell T/T Length</th><td colspan="3" style="font-size:16px;"><b>{Shell_TT_Length_mm:,.0f} mm</b></td></tr>
     </table>
@@ -472,7 +479,7 @@ else:
     st.success("✅ **Datasheet Validated:** 모든 공정 및 기계적 구조 제약 조건을 통과했습니다.")
 
 # =========================================================
-# [I] 5. 3D 형상 렌더링
+# [I] 5. 3D 형상 렌더링 (🌟 Lead 반영)
 # =========================================================
 st.markdown("---")
 st.subheader("5. 3D 코일 형상 (Schematic Representation)")
@@ -480,21 +487,18 @@ st.subheader("5. 3D 코일 형상 (Schematic Representation)")
 if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig = go.Figure()
     
-    N_p = st.session_state['N_p']
-    turns = Turns_per_Tube
-    d_c = st.session_state['D_c']
-    p = st.session_state['pitch']
-    t_max = turns * 2 * np.pi
+    t_max = Turns_per_Tube * 2 * np.pi
+    t_base = np.linspace(0, t_max, int(max(Turns_per_Tube * 60, 150)))
     
-    t_base = np.linspace(0, t_max, int(max(turns * 60, 150)))
-    z = (p / (2 * np.pi)) * t_base
+    # 🌟 3D 시각화에서도 피치가 아닌 'Lead'를 기준으로 Z축 상승 반영
+    z = (Lead_m * 1000.0 / (2 * np.pi)) * t_base
     coil_height = max(z) if len(z) > 0 else 1.0
     
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    for i in range(int(N_p)):
-        angle_offset = i * (2 * np.pi / N_p)
-        x = (d_c / 2) * np.cos(t_base + angle_offset)
-        y = (d_c / 2) * np.sin(t_base + angle_offset)
+    for i in range(int(N_p_val)):
+        angle_offset = i * (2 * np.pi / N_p_val)
+        x = (st.session_state['D_c'] / 2) * np.cos(t_base + angle_offset)
+        y = (st.session_state['D_c'] / 2) * np.sin(t_base + angle_offset)
         fig.add_trace(go.Scatter3d(
             x=x, y=y, z=z, mode='lines',
             line=dict(color=colors[i % len(colors)], width=6),
@@ -514,17 +518,17 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig.add_trace(go.Surface(x=x_shell, y=y_shell, z=z_grid, opacity=0.08, colorscale='Blues', showscale=False, name='Shell', hoverinfo='skip'))
     
     noz_h = st.session_state['d_o'] * 3.0
-    in_x = (d_c / 2) * np.cos(0)
-    in_y = (d_c / 2) * np.sin(0)
+    in_x = (st.session_state['D_c'] / 2) * np.cos(0)
+    in_y = (st.session_state['D_c'] / 2) * np.sin(0)
     fig.add_trace(go.Scatter3d(x=[in_x, in_x], y=[in_y, in_y], z=[coil_height, coil_height + noz_h], mode='lines', line=dict(color='red', width=12), name='Tube Inlet'))
     
-    out_x = (d_c / 2) * np.cos(t_max % (2 * np.pi))
-    out_y = (d_c / 2) * np.sin(t_max % (2 * np.pi))
+    out_x = (st.session_state['D_c'] / 2) * np.cos(t_max % (2 * np.pi))
+    out_y = (st.session_state['D_c'] / 2) * np.sin(t_max % (2 * np.pi))
     fig.add_trace(go.Scatter3d(x=[out_x, out_x], y=[out_y, out_y], z=[0, -noz_h], mode='lines', line=dict(color='red', width=12), name='Tube Outlet'))
     
     sh_in_r = st.session_state['D_s'] / 2.0
-    fig.add_trace(go.Scatter3d(x=[sh_in_r, sh_in_r + noz_h], y=[0, 0], z=[p/2.0, p/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Inlet'))
-    fig.add_trace(go.Scatter3d(x=[-sh_in_r, -sh_in_r - noz_h], y=[0, 0], z=[coil_height - p/2.0, coil_height - p/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Outlet'))
+    fig.add_trace(go.Scatter3d(x=[sh_in_r, sh_in_r + noz_h], y=[0, 0], z=[p_m*1000/2.0, p_m*1000/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Inlet'))
+    fig.add_trace(go.Scatter3d(x=[-sh_in_r, -sh_in_r - noz_h], y=[0, 0], z=[coil_height - p_m*1000/2.0, coil_height - p_m*1000/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Outlet'))
     
     sup_lx = (st.session_state['D_mandrel'] / 2.0)
     sup_rx = (st.session_state['D_s'] / 2.0)
