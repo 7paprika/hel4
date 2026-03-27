@@ -9,7 +9,7 @@ st.title("플랜트 공정 설계: Helical Tube Heat Exchanger 최적화")
 st.markdown("---")
 
 # =========================================================
-# [A] 글로벌 상태(Session State) 초기화 (안전한 기본값)
+# [A] 글로벌 상태(Session State) 초기화
 # =========================================================
 init_state = {
     'tag_no': 'HE-101', 
@@ -41,7 +41,6 @@ for k, v in init_state.items():
 def apply_json():
     try:
         parsed_data = json.loads(st.session_state['json_input_text'])
-        # 구버전 JSON 키 누락 방지 및 덮어쓰기
         for k in init_state.keys():
             if k in parsed_data:
                 st.session_state[k] = parsed_data[k]
@@ -67,7 +66,7 @@ with st.sidebar:
 st.subheader(f"🏷️ Equipment Tag: **{st.session_state['tag_no']}**")
 
 # =========================================================
-# [C] 1. 유체 식별 및 물성치
+# [C] 1. 유체 식별 및 물성치 (툴팁 완벽 복구)
 # =========================================================
 st.subheader("1. 유체 식별 및 물성치")
 st.radio("튜브 측 유체 상(Phase) 선택", ["Liquid (뉴턴 유체 - 물, 오일 등)", "Slurry (비뉴턴 유체 - 고농도 혼합물)"], key='fluid_type', horizontal=True)
@@ -76,15 +75,15 @@ col_tube, col_shell = st.columns(2)
 with col_tube:
     st.markdown("#### **Tube-side (Inner)**")
     st.text_input("유체 명칭", key='tube_fluid_name')
-    st.number_input("혼합 밀도 (kg/m³)", key='t_rho')
-    st.number_input("비열 (J/kg·K)", key='t_cp')
-    st.number_input("열전도도 (W/m·K)", key='t_k')
+    st.number_input("혼합 밀도 (kg/m³)", key='t_rho', help="일반 액체: 700 - 1000, 슬러리: 1100 - 1800 이상")
+    st.number_input("비열 (J/kg·K)", key='t_cp', help="물: 4180, 일반 오일류: 1800 - 2400")
+    st.number_input("열전도도 (W/m·K)", key='t_k', help="물: 0.6, 일반 오일류: 0.1 - 0.2")
     if "Liquid" in st.session_state['fluid_type']:
-        st.number_input("동점성 계수 (cP)", format="%.2f", key='t_mu')
+        st.number_input("동점성 계수 (cP)", format="%.2f", key='t_mu', help="물(20°C): 1.0 cP, 경질유: 2.0 - 10.0")
     else:
         st.selectbox("유변학 모델", ["Power-law (멱법칙)", "Bingham Plastic (빙햄 가소성)"], key='rheology_model')
         if "Bingham" in st.session_state['rheology_model']:
-            st.number_input("항복 응력 (Pa)", key='tau_y')
+            st.number_input("항복 응력 (Pa)", key='tau_y', help="펄프/고농도 슬러리: 5 - 50 Pa")
             st.number_input("가소성 점도 (Pa·s)", format="%.4f", key='plastic_visc')
         else:
             st.number_input("점조도 지수 K (Pa·sⁿ)", format="%.4f", key='consistency_k')
@@ -101,7 +100,7 @@ with col_shell:
 st.markdown("---")
 
 # =========================================================
-# [D] 2. 공정 운전 조건 (Energy Balance)
+# [D] 2. 공정 운전 조건 (툴팁 복구)
 # =========================================================
 st.subheader("2. 공정 운전 조건 (Energy Balance)")
 
@@ -140,8 +139,8 @@ with col_pc3:
     st.number_input("Shell 목표 출구 온도 (°C)", key='T_cold_out')
     st.caption(f"💡 예상 쉘 출구 온도: **{est_T_cold_out:,.1f} °C**")
 with col_pc4:
-    st.number_input("Tube 허용 ΔP (bar)", 0.1, 10.0, step=0.1, key='allowable_dp_tube')
-    st.number_input("Shell 허용 ΔP (bar)", 0.1, 10.0, step=0.1, key='allowable_dp_shell')
+    st.number_input("Tube 허용 ΔP (bar)", 0.1, 10.0, step=0.1, key='allowable_dp_tube', help="TEMA 가이드: 0.5 - 0.7 bar 권장")
+    st.number_input("Shell 허용 ΔP (bar)", 0.1, 10.0, step=0.1, key='allowable_dp_shell', help="코일 외부 유동 특성상 0.3 - 0.5 bar 이내 설계 요망")
 
 if is_tube_heating:
     dT1 = s_in - t_out  
@@ -160,59 +159,51 @@ else:
     lmtd_error = True
 
 if lmtd_error:
-    st.error("🚨 **열역학 에러 (Temperature Cross):** 열전달이 불가능한 온도 역전 현상이 발생했습니다.")
+    st.error("🚨 **열역학 에러 (Temperature Cross):** 열전달이 불가능한 온도 역전 현상이 발생했습니다. 입출구 온도를 다시 설정하십시오.")
 
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학적 및 기계적 설계 (JSON 매칭 복구)
+# [E] 3. 기하학 및 기계적 설계 (툴팁 100% 복구)
 # =========================================================
 st.subheader("3. 기하학적 설계 및 기계 설계 (ASME Sec.VIII)")
 
 col_g1, col_g2, col_g3, col_g4 = st.columns(4)
 
 with col_g1:
-    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p')
+    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시켜 튜브 내 유속과 ΔP를 획기적으로 낮춥니다.")
     
-    # 🌟 OD 스마트 매칭 로직 (JSON 호환)
     do_options = {'3/8" (9.53 mm)': 9.53, '1/2" (12.7 mm)': 12.7, '3/4" (19.05 mm)': 19.05, '1" (25.4 mm)': 25.4, 'Custom (직접 입력)': -1}
     do_keys = list(do_options.keys())
     do_vals = list(do_options.values())
     curr_do = st.session_state.get('d_o', 25.4)
-    
-    try:
-        do_idx = do_vals.index(curr_do)
-    except ValueError:
-        do_idx = len(do_keys) - 1 # Custom으로 회피
+    try: do_idx = do_vals.index(curr_do)
+    except ValueError: do_idx = len(do_keys) - 1
 
-    selected_do = st.selectbox("튜브 외경 (OD)", do_keys, index=do_idx)
+    selected_do = st.selectbox("튜브 외경 (OD)", do_keys, index=do_idx, help="표준: 19.05 mm (3/4\"), 슬러리/고점도: 25.4 mm (1\") 이상 권장")
     if "Custom" in selected_do:
         st.session_state['d_o'] = st.number_input("외경 직접 입력 (mm)", 5.0, 100.0, value=float(curr_do), step=0.1)
     else:
         st.session_state['d_o'] = do_options[selected_do]
 
     with st.expander("💡 튜브 외경(OD) 가이드"):
-        st.markdown("| 규격 (inch) | 외경 (mm) | 추천 적용 분야 |\n|:---|:---|:---|\n| **3/8\"** | 9.53 | 초소형 장비용 |\n| **1/2\"** | 12.7 | 일반 컴팩트 설계 |\n| **3/4\"** | 19.05 | 표준 규격 |\n| **1\"** | 25.4 | 슬러리 방지 권장 |")
+        st.markdown("| 규격 (inch) | 외경 (mm) | 추천 적용 분야 |\n|:---|:---|:---|\n| **3/8\"** | 9.53 | 초소형 장비용 |\n| **1/2\"** | 12.7 | 일반 컴팩트 설계 |\n| **3/4\"** | 19.05 | 압력 손실과 제작 편의성 균형 (표준) |\n| **1\"** | 25.4 | 슬러리 적용 시 플러깅 방지 권장 |")
 
-    # 🌟 BWG 스마트 매칭 로직 (JSON 호환)
     bwg_options = {'BWG 10 (3.40 mm)': 3.40, 'BWG 12 (2.77 mm)': 2.77, 'BWG 14 (2.11 mm)': 2.11, 'BWG 16 (1.65 mm)': 1.65, 'BWG 18 (1.24 mm)': 1.24, 'BWG 20 (0.89 mm)': 0.89, 'BWG 22 (0.71 mm)': 0.71, 'Custom (직접 입력)': -1}
     bwg_keys = list(bwg_options.keys())
     bwg_vals = list(bwg_options.values())
     curr_t = st.session_state.get('t_thick', 2.11)
-    
-    try:
-        bwg_idx = bwg_vals.index(curr_t)
-    except ValueError:
-        bwg_idx = len(bwg_keys) - 1
+    try: bwg_idx = bwg_vals.index(curr_t)
+    except ValueError: bwg_idx = len(bwg_keys) - 1
 
-    selected_bwg = st.selectbox("튜브 두께 (BWG)", bwg_keys, index=bwg_idx)
+    selected_bwg = st.selectbox("튜브 두께 (BWG)", bwg_keys, index=bwg_idx, help="일반적인 산업용 표준은 BWG 14 (2.11 mm) 또는 BWG 16 (1.65 mm) 입니다.")
     if "Custom" in selected_bwg:
         st.session_state['t_thick'] = st.number_input("두께 직접 입력 (mm)", 0.5, 10.0, value=float(curr_t), step=0.1)
     else:
         st.session_state['t_thick'] = bwg_options[selected_bwg]
 
     with st.expander("💡 튜브 두께(BWG) 가이드"):
-        st.markdown("| BWG | mm | 특징 |\n|:---|:---|:---|\n| **10** | 3.40 | 고압/부식성 |\n| **14** | 2.11 | 산업 표준 두께 |\n| **16** | 1.65 | 범용 표준 |\n| **20** | 0.89 | 소구경 튜브용 |")
+        st.markdown("| BWG | mm | 특징 |\n|:---|:---|:---|\n| **10** | 3.40 | 고압/부식성 유체, 좁은 밴딩 |\n| **14** | 2.11 | 산업용 열교환기 표준 두께 |\n| **16** | 1.65 | 범용 표준 (유량/내압 균형) |\n| **20** | 0.89 | 계측기 또는 소구경 튜브용 |")
 
     d_i = st.session_state['d_o'] - 2 * st.session_state['t_thick']
     if d_i <= 0:
@@ -220,16 +211,12 @@ with col_g1:
     else:
         st.caption(f"✓ 유효 내경 (ID): **{d_i:.2f} mm**")
 
-    # 🌟 Material 스마트 매칭 로직
     mat_dict = {'Stainless Steel 316 (k=16)': 16.0, 'Titanium (k=22)': 22.0, 'Custom (직접 입력)': -1}
     mat_keys = list(mat_dict.keys())
     mat_vals = list(mat_dict.values())
     curr_k = st.session_state.get('tube_k_wall', 16.0)
-    
-    try:
-        mat_idx = mat_vals.index(curr_k)
-    except ValueError:
-        mat_idx = len(mat_keys) - 1
+    try: mat_idx = mat_vals.index(curr_k)
+    except ValueError: mat_idx = len(mat_keys) - 1
 
     selected_mat = st.selectbox("튜브 재질", mat_keys, index=mat_idx)
     if "Custom" in selected_mat:
@@ -238,25 +225,25 @@ with col_g1:
         st.session_state['tube_k_wall'] = mat_dict[selected_mat]
 
 with col_g2:
-    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c')
+    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="코일 벤딩 시 파열을 막기 위해 튜브 외경의 최소 10배 이상을 권장합니다.")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 10.0:.1f} mm**")
     
-    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel')
+    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채워 쉘 유체의 바이패스(Bypass)를 막는 코어 기둥입니다.")
     st.caption(f"💡 추천 최적값: **{max(10.0, st.session_state['D_c'] - st.session_state['d_o'] - 10.0):.1f} mm**")
 
 with col_g3:
-    st.number_input("코일 피치 (p, mm)", step=1.0, key='pitch')
+    st.number_input("코일 피치 (p, mm)", step=1.0, key='pitch', help="튜브 간 간섭을 막기 위해 튜브 외경의 1.25배 이상이어야 합니다.")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 1.25:.1f} mm**")
     
-    st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s')
+    st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s', help="코일 조립 및 열팽창 여유를 위해 코일 외경보다 최소 40mm 이상의 클리어런스가 필요합니다.")
     st.caption(f"💡 추천 최소값: **{st.session_state['D_c'] + st.session_state['d_o'] + 40.0:.1f} mm**")
     
     st.markdown("#### ⚙️ 기계적 설계 (ASME Sec.VIII)")
     with st.expander("ASME 쉘 두께 설계 파라미터"):
-        st.number_input("Shell 설계 압력 (bar)", step=1.0, key='design_p_shell')
-        st.number_input("허용 응력 (S, MPa)", step=1.0, key='allow_s_shell')
-        st.number_input("용접 효율 (E)", max_value=1.0, key='joint_e')
-        st.number_input("부식 여유 (C.A., mm)", step=0.5, key='ca_shell')
+        st.number_input("Shell 설계 압력 (bar)", step=1.0, key='design_p_shell', help="운전 압력의 110% 또는 운전 압력 + 1.5 bar 적용")
+        st.number_input("허용 응력 (S, MPa)", step=1.0, key='allow_s_shell', help="일반적인 탄소강(SA-516) 기준 약 137.9 MPa")
+        st.number_input("용접 효율 (E)", max_value=1.0, key='joint_e', help="방사선 투과검사(RT) 범위에 따라 결정 (1.0 또는 0.85)")
+        st.number_input("부식 여유 (C.A., mm)", step=0.5, key='ca_shell', help="탄소강의 일반적인 부식 여유 (1/8 인치 = 3.0 mm)")
 
     # ASME 쉘 두께 연산
     P_mpa = st.session_state['design_p_shell'] / 10.0
@@ -273,11 +260,19 @@ with col_g3:
     st.caption(f"✓ 상업용 쉘 두께 (t_shell): **{t_final:.0f} mm**")
 
 with col_g4:
-    st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi')
-    st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo')
+    st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일/오염 저항값. 청정수: 0.0001, 슬러리: 0.001~0.002")
+    st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부(쉘 측) 오염 저항값. 기계적 세척이 불가하므로 보수적으로 접근 요망.")
     
     with st.expander("💡 TEMA 오염계수(Fouling) 레퍼런스"):
-        st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
+        st.markdown("""
+        **(단위: $m^2\cdot K/W$)**
+        | 유체 종류 | 오염계수 권장치 | 비고 |
+        | :--- | :--- | :--- |
+        | **증류수 / 청정수** | 0.00009 - 0.00018 | 스케일 거의 없음 |
+        | **냉각수 (Cooling Water)** | 0.00018 - 0.00035 | 수질에 따라 유동적 |
+        | **해수 (Sea Water)** | 0.00035 - 0.00053 | 생물학적 오염 주의 |
+        | **공정 슬러리 (Slurry)** | 0.00088 - 0.00200+ | 입자 퇴적 극심. 유속 유지 필수 |
+        """)
 
 # =========================================================
 # [F] 4. 수력학 코어 연산 
@@ -343,10 +338,9 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [G] 실시간 Bounding Box 표시 (Shell Length (T/T) 명문화)
+# [G] 실시간 Bounding Box 표시
 # =========================================================
 st.markdown("#### 📐 실시간 장비 예상 규격 (Estimated Bounding Box)")
-# 🌟 코일 높이에 상하단 여유 공간(D_s 기준)을 더하여 총 쉘 길이(T/T) 산출
 Shell_TT_Length = L_shell_m + (2.0 * D_s_m) 
 shell_od_m = shell_od / 1000.0
 Footprint_Area = (np.pi / 4.0) * (shell_od_m ** 2)
@@ -368,7 +362,6 @@ st.markdown("---")
 st.subheader("4. 열전달 및 수력학 검증 (Thermodynamics & Hydraulics)")
 st.caption(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# 🌟 데이터시트에 Shell T/T Length 공식 추가
 datasheet_md = f"""
 | **Item Tag No.** | **{st.session_state['tag_no']}** | **Type** | Helical Coil Heat Exchanger |
 | :--- | :--- | :--- | :--- |
@@ -479,4 +472,4 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig.update_layout(scene=dict(xaxis_title='X (mm)', yaxis_title='Y (mm)', zaxis_title='Height (mm)', aspectmode='data'), margin=dict(l=0, r=0, b=0, t=0), height=700, legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("형상을 렌더링할 수 없습니다. 물리적 변수를 다시 확인하십시오.")
+    st.warning("형상을 렌더링할 수 없습니다. 온도 조건(Temperature Cross) 또는 물리적 변수를 다시 확인하십시오.")
