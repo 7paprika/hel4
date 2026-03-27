@@ -9,7 +9,7 @@ st.title("플랜트 공정 설계: Helical Tube Heat Exchanger 최적화")
 st.markdown("---")
 
 # =========================================================
-# [A] 글로벌 상태(Session State) 초기화 (여유율 추가)
+# [A] 글로벌 상태(Session State) 초기화
 # =========================================================
 init_state = {
     'tag_no': 'HE-101', 
@@ -31,7 +31,7 @@ init_state = {
     'D_mandrel': 350.0, 
     'tube_material': 'Stainless Steel 316 (k=16)', 'tube_k_wall': 16.0,
     'R_fi': 0.000176, 'R_fo': 0.000176,
-    'overdesign_pct': 10.0, # 🌟 여유율 추가
+    'overdesign_pct': 10.0,
     'design_p_shell': 10.0, 'allow_s_shell': 137.9, 'joint_e': 0.85, 'ca_shell': 3.0
 }
 
@@ -226,7 +226,7 @@ with col_g1:
         st.session_state['tube_k_wall'] = mat_dict[selected_mat]
 
 with col_g2:
-    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="코일 벤딩 시 파열을 막기 위해 튜브 외경의 최소 10배 이상을 권장합니다.")
+    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="파열 방지를 위해 외경의 최소 10배 이상 권장")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 10.0:.1f} mm**")
     
     st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채워 쉘 유체의 바이패스를 막는 코어 기둥")
@@ -263,14 +263,13 @@ with col_g4:
     st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
     st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값")
     
-    # 🌟 Overdesign Factor 추가 🌟
     st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적(Req. Area)에 추가할 안전 여유율 (통상 10~20% 권장)")
     
     with st.expander("💡 TEMA 오염계수(Fouling) 레퍼런스"):
         st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
 
 # =========================================================
-# [F] 4. 수력학 코어 연산 (Overdesign 면적 반영)
+# [F] 4. 수력학 코어 연산 (3D 피타고라스 기하학 완벽 반영)
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -308,6 +307,8 @@ m_cold_kg_s = m_s / 3600.0
 D_s_m = st.session_state['D_s'] / 1000.0
 D_man_m = st.session_state['D_mandrel'] / 1000.0
 d_o_m = st.session_state['d_o'] / 1000.0
+p_m = st.session_state['pitch'] / 1000.0
+D_c_m = st.session_state['D_c'] / 1000.0
 
 A_annulus = (np.pi / 4.0) * (D_s_m**2 - D_man_m**2)
 A_free_flow = A_annulus * 0.5 
@@ -322,17 +323,21 @@ h_o = (Nu_shell * st.session_state['s_k']) / max(1e-6, d_o_m)
 R_wall = (d_o_m * np.log(st.session_state['d_o'] / max(1e-6, d_i))) / (2.0 * max(1e-6, st.session_state['tube_k_wall'])) if d_i > 0 else 0
 U_calc = 1.0 / ((1.0 / max(h_o, 0.1)) + st.session_state['R_fo'] + R_wall + st.session_state['R_fi'] * (st.session_state['d_o'] / max(1e-6, d_i)) + (st.session_state['d_o'] / max(1e-6, d_i)) * (1.0 / max(h_i, 0.1)))
 
-# 🌟 여유율(Overdesign)을 반영한 면적 산출
 Area_req = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
 Area_design = Area_req * (1.0 + st.session_state['overdesign_pct'] / 100.0)
 
-# 길이는 '설계 면적(여유율 반영)'을 기준으로 길어짐
+# 🌟 기하학적 수식 오류 완벽 보정 (3D Helix Length) 🌟
 Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
 Length_per_Tube = Total_Tube_Length / max(1, st.session_state['N_p'])
-Turns_per_Tube = Length_per_Tube / (np.pi * (st.session_state['D_c'] / 1000.0)) if st.session_state['D_c'] > 0 else 0.0
+
+# 1회전 길이 = 피타고라스 정리 (원주^2 + 피치^2)의 제곱근
+Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + p_m**2) if D_c_m > 0 else 1.0
+Turns_per_Tube = Length_per_Tube / Length_per_Turn
 
 dp_tube_bar = (f_c * (Length_per_Tube / (max(1e-6, d_i) / 1000.0)) * (st.session_state['t_rho'] * (v_tube ** 2) / 2.0)) / 100000.0
-L_shell_m = (Turns_per_Tube * (st.session_state['pitch'] / 1000.0))
+
+# 쉘 코일부 수직 높이는 (권선수 * 피치)
+L_shell_m = Turns_per_Tube * p_m
 f_s = 0.316 / (max(Re_shell, 1.0)**0.25) 
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
@@ -357,7 +362,7 @@ col_dim4.metric("장비 바닥 면적 (Footprint)", f"{Footprint_Area:,.2f} m²"
 st.markdown("---")
 
 # =========================================================
-# [H] 4. 상업용 데이터시트 및 PDF 내보내기 (Overdesign 반영)
+# [H] 4. 상업용 데이터시트 및 PDF 내보내기
 # =========================================================
 st.subheader("4. 상업용 데이터시트 검증 (Datasheet & Report)")
 st.caption(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -449,11 +454,10 @@ with col_dl1:
         label="📄 Datasheet 다운로드 (HTML/PDF용)",
         data=html_report,
         file_name=f"{st.session_state['tag_no']}_Datasheet.html",
-        mime="text/html",
-        help="클릭하여 HTML 보고서를 다운로드한 뒤, 브라우저에서 열어 '인쇄(Ctrl+P) -> PDF로 저장'을 선택하십시오."
+        mime="text/html"
     )
 with col_dl2:
-    st.info("💡 파이썬 폰트 에러 없는 무결점 PDF 출력을 위해 HTML 파일로 내보냅니다. 브라우저 인쇄 기능을 활용하세요.")
+    st.info("💡 파이썬 폰트 에러 없는 무결점 PDF 출력을 위해 HTML 파일로 내보냅니다. 브라우저 인쇄(Ctrl+P) 기능을 활용하세요.")
 
 err_msg = []
 if lmtd_error: err_msg.append("Temperature Cross (온도 역전) 발생")
@@ -543,4 +547,4 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig.update_layout(scene=dict(xaxis_title='X (mm)', yaxis_title='Y (mm)', zaxis_title='Height (mm)', aspectmode='data'), margin=dict(l=0, r=0, b=0, t=0), height=700, legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("형상을 렌더링할 수 없습니다. 물리적 변수를 다시 확인하십시오.")
+    st.warning("형상을 렌더링할 수 없습니다. 온도 조건(Temperature Cross) 또는 물리적 변수를 다시 확인하십시오.")
