@@ -9,7 +9,7 @@ st.title("플랜트 공정 설계: Helical Tube Heat Exchanger 최적화")
 st.markdown("---")
 
 # =========================================================
-# [A] 글로벌 상태(Session State) 초기화
+# [A] 글로벌 상태(Session State) 초기화 (여유율 추가)
 # =========================================================
 init_state = {
     'tag_no': 'HE-101', 
@@ -31,6 +31,7 @@ init_state = {
     'D_mandrel': 350.0, 
     'tube_material': 'Stainless Steel 316 (k=16)', 'tube_k_wall': 16.0,
     'R_fi': 0.000176, 'R_fo': 0.000176,
+    'overdesign_pct': 10.0, # 🌟 여유율 추가
     'design_p_shell': 10.0, 'allow_s_shell': 137.9, 'joint_e': 0.85, 'ca_shell': 3.0
 }
 
@@ -262,11 +263,14 @@ with col_g4:
     st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
     st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값")
     
+    # 🌟 Overdesign Factor 추가 🌟
+    st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적(Req. Area)에 추가할 안전 여유율 (통상 10~20% 권장)")
+    
     with st.expander("💡 TEMA 오염계수(Fouling) 레퍼런스"):
         st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
 
 # =========================================================
-# [F] 4. 수력학 코어 연산 
+# [F] 4. 수력학 코어 연산 (Overdesign 면적 반영)
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -318,8 +322,12 @@ h_o = (Nu_shell * st.session_state['s_k']) / max(1e-6, d_o_m)
 R_wall = (d_o_m * np.log(st.session_state['d_o'] / max(1e-6, d_i))) / (2.0 * max(1e-6, st.session_state['tube_k_wall'])) if d_i > 0 else 0
 U_calc = 1.0 / ((1.0 / max(h_o, 0.1)) + st.session_state['R_fo'] + R_wall + st.session_state['R_fi'] * (st.session_state['d_o'] / max(1e-6, d_i)) + (st.session_state['d_o'] / max(1e-6, d_i)) * (1.0 / max(h_i, 0.1)))
 
-Area = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
-Total_Tube_Length = Area / (np.pi * d_o_m) if d_o_m > 0 else 0.0
+# 🌟 여유율(Overdesign)을 반영한 면적 산출
+Area_req = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
+Area_design = Area_req * (1.0 + st.session_state['overdesign_pct'] / 100.0)
+
+# 길이는 '설계 면적(여유율 반영)'을 기준으로 길어짐
+Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
 Length_per_Tube = Total_Tube_Length / max(1, st.session_state['N_p'])
 Turns_per_Tube = Length_per_Tube / (np.pi * (st.session_state['D_c'] / 1000.0)) if st.session_state['D_c'] > 0 else 0.0
 
@@ -329,7 +337,7 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [G] 실시간 Bounding Box 표시 (T/T 단위 mm 수정)
+# [G] 실시간 Bounding Box 표시
 # =========================================================
 st.markdown("#### 📐 실시간 장비 예상 규격 (Estimated Bounding Box)")
 Shell_TT_Length_m = L_shell_m + (2.0 * D_s_m) 
@@ -349,7 +357,7 @@ col_dim4.metric("장비 바닥 면적 (Footprint)", f"{Footprint_Area:,.2f} m²"
 st.markdown("---")
 
 # =========================================================
-# [H] 4. 상업용 데이터시트 및 PDF 내보내기 (T/T 단위 mm 반영)
+# [H] 4. 상업용 데이터시트 및 PDF 내보내기 (Overdesign 반영)
 # =========================================================
 st.subheader("4. 상업용 데이터시트 검증 (Datasheet & Report)")
 st.caption(f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -359,7 +367,7 @@ datasheet_md = f"""
 | :--- | :--- | :--- | :--- |
 | **Performance Data** | | | |
 | Heat Duty (kW) | {Q_kW:,.2f} | Overall U-value (W/m²K) | {U_calc:,.1f} |
-| Required Total Area (m²)| {Area:,.2f} | LMTD (°C) | {LMTD:,.1f} |
+| Req. Area / Design Area | {Area_req:,.2f} m² / **{Area_design:,.2f} m²** (+{st.session_state['overdesign_pct']}%) | LMTD (°C) | {LMTD:,.1f} |
 | **Process Conditions** | **Tube Side (Inner)** | **Shell Side (Outer)** | |
 | Fluid Name | **{st.session_state['tube_fluid_name']}** | **{st.session_state['shell_fluid_name']}** | |
 | Total Flow Rate (kg/h) | {st.session_state['m_hot']:,.0f} | {st.session_state['m_cold']:,.0f} | |
@@ -411,7 +419,7 @@ html_report = f"""
     <table>
         <tr><td class="section-title" colspan="4">1. General Information</td></tr>
         <tr><th>Item Tag No.</th><td><b>{st.session_state['tag_no']}</b></td><th>Overall U-value</th><td>{U_calc:,.1f} W/m²K</td></tr>
-        <tr><th>Heat Duty</th><td>{Q_kW:,.2f} kW</td><th>Required Area</th><td>{Area:,.2f} m²</td></tr>
+        <tr><th>Heat Duty</th><td>{Q_kW:,.2f} kW</td><th>Req. / Design Area</th><td>{Area_req:,.2f} / <b>{Area_design:,.2f} m²</b> (+{st.session_state['overdesign_pct']}%)</td></tr>
         <tr><th>LMTD</th><td>{LMTD:,.1f} &deg;C</td><th>Operation Mode</th><td>{op_mode}</td></tr>
         
         <tr><td class="section-title" colspan="4">2. Process Conditions</td></tr>
@@ -535,4 +543,4 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig.update_layout(scene=dict(xaxis_title='X (mm)', yaxis_title='Y (mm)', zaxis_title='Height (mm)', aspectmode='data'), margin=dict(l=0, r=0, b=0, t=0), height=700, legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("형상을 렌더링할 수 없습니다. 온도 조건(Temperature Cross) 또는 물리적 변수를 다시 확인하십시오.")
+    st.warning("형상을 렌더링할 수 없습니다. 물리적 변수를 다시 확인하십시오.")
