@@ -26,7 +26,7 @@ init_state = {
     'T_cold_in': 120.0, 'T_cold_out': 90.0,
     'allowable_dp_tube': 1.5, 'allowable_dp_shell': 0.5,
     'N_p': 3, 
-    'd_o': 25.4, 't_thick': 2.11, 'D_c': 400.0, 'pitch': 50.0, 'D_s': 500.0,
+    'd_o': 25.4, 't_thick': 2.11, 'D_c': 400.0, 'pitch': 31.75, 'D_s': 500.0,
     'shell_thick': 10.0,
     'D_mandrel': 350.0, 
     'tube_material': 'Stainless Steel 316 (k=16)', 'tube_k_wall': 16.0,
@@ -165,14 +165,14 @@ if lmtd_error:
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학 및 기계적 설계
+# [E] 3. 기하학 및 기계적 설계 (Clearance & Pitch 로직 보완)
 # =========================================================
 st.subheader("3. 기하학적 설계 및 기계 설계 (ASME Sec.VIII)")
 
 col_g1, col_g2, col_g3, col_g4 = st.columns(4)
 
 with col_g1:
-    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시킵니다. 주의: N_p가 커지면 튜브 한 가닥의 상승각(Lead)이 가팔라집니다.")
+    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시켜 튜브 내 유속과 ΔP를 낮춥니다.")
     
     do_options = {'3/8" (9.53 mm)': 9.53, '1/2" (12.7 mm)': 12.7, '3/4" (19.05 mm)': 19.05, '1" (25.4 mm)': 25.4, 'Custom (직접 입력)': -1}
     do_keys = list(do_options.keys())
@@ -187,9 +187,6 @@ with col_g1:
     else:
         st.session_state['d_o'] = do_options[selected_do]
 
-    with st.expander("💡 튜브 외경(OD) 가이드"):
-        st.markdown("| 규격 (inch) | 외경 (mm) | 추천 적용 분야 |\n|:---|:---|:---|\n| **3/8\"** | 9.53 | 초소형 장비용 |\n| **1/2\"** | 12.7 | 일반 컴팩트 설계 |\n| **3/4\"** | 19.05 | 압력 손실과 제작 편의성 균형 (표준) |\n| **1\"** | 25.4 | 슬러리 적용 시 플러깅 방지 권장 |")
-
     bwg_options = {'BWG 10 (3.40 mm)': 3.40, 'BWG 12 (2.77 mm)': 2.77, 'BWG 14 (2.11 mm)': 2.11, 'BWG 16 (1.65 mm)': 1.65, 'BWG 18 (1.24 mm)': 1.24, 'BWG 20 (0.89 mm)': 0.89, 'BWG 22 (0.71 mm)': 0.71, 'Custom (직접 입력)': -1}
     bwg_keys = list(bwg_options.keys())
     bwg_vals = list(bwg_options.values())
@@ -202,9 +199,6 @@ with col_g1:
         st.session_state['t_thick'] = st.number_input("두께 직접 입력 (mm)", 0.5, 10.0, value=float(curr_t), step=0.1)
     else:
         st.session_state['t_thick'] = bwg_options[selected_bwg]
-
-    with st.expander("💡 튜브 두께(BWG) 가이드"):
-        st.markdown("| BWG | mm | 특징 |\n|:---|:---|:---|\n| **10** | 3.40 | 고압/부식성 유체, 좁은 밴딩 |\n| **14** | 2.11 | 산업용 열교환기 표준 두께 |\n| **16** | 1.65 | 범용 표준 (유량/내압 균형) |\n| **20** | 0.89 | 계측기 또는 소구경 튜브용 |")
 
     d_i = st.session_state['d_o'] - 2 * st.session_state['t_thick']
     if d_i <= 0:
@@ -229,15 +223,29 @@ with col_g2:
     st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="파열 방지를 위해 외경의 최소 10배 이상 권장")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 10.0:.1f} mm**")
     
-    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채워 쉘 유체의 바이패스를 막는 코어 기둥")
-    st.caption(f"💡 추천 최적값: **{max(10.0, st.session_state['D_c'] - st.session_state['d_o'] - 10.0):.1f} mm**")
+    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채우는 코어 기둥")
+    
+    # 🌟 내측 반경 클리어런스 (Inner Clearance) 실시간 계산
+    inner_clearance_rad = ((st.session_state['D_c'] - st.session_state['d_o']) - st.session_state['D_mandrel']) / 2.0
+    if inner_clearance_rad < 0:
+        st.error(f"🚨 간섭 발생! 맨드릴이 코일을 파고듭니다 ({-inner_clearance_rad:.1f} mm 겹침)")
+    else:
+        st.caption(f"✓ 내측 틈새 (Radial Clearance): **{inner_clearance_rad:.1f} mm**")
 
 with col_g3:
-    st.number_input("코일 피치 (p, mm)", step=1.0, key='pitch', help="서로 다른 인접 튜브 중심 간의 수직 거리입니다. (Lead 아님)")
-    st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 1.25:.1f} mm**")
+    # 🌟 최소 피치를 외경(d_o)으로 허용
+    min_pitch = st.session_state['d_o']
+    st.number_input("코일 피치 (p, mm)", min_value=float(min_pitch), step=1.0, key='pitch', help="튜브 중심 간 거리. p=OD일 경우 코일이 딱 붙습니다 (제작 가능하나 Shell 열전달 저하).")
+    st.caption(f"💡 밀착 제작 최소값: **{min_pitch:.1f} mm** / TEMA 권장 여유: **{min_pitch*1.25:.1f} mm**")
     
-    st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s', help="최소 40mm 이상의 클리어런스 필요")
-    st.caption(f"💡 추천 최소값: **{st.session_state['D_c'] + st.session_state['d_o'] + 40.0:.1f} mm**")
+    st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s', help="코일을 감싸는 압력 용기의 내부 직경")
+    
+    # 🌟 외측 반경 클리어런스 (Outer Clearance) 실시간 계산
+    outer_clearance_rad = (st.session_state['D_s'] - (st.session_state['D_c'] + st.session_state['d_o'])) / 2.0
+    if outer_clearance_rad < 0:
+        st.error(f"🚨 간섭 발생! 코일이 쉘 벽면을 뚫고 나갑니다 ({-outer_clearance_rad:.1f} mm 겹침)")
+    else:
+        st.caption(f"✓ 외측 틈새 (Radial Clearance): **{outer_clearance_rad:.1f} mm**")
     
     st.markdown("#### ⚙️ 기계적 설계 (ASME Sec.VIII)")
     with st.expander("ASME 쉘 두께 설계 파라미터"):
@@ -257,8 +265,6 @@ with col_g3:
     st.session_state['shell_thick'] = t_final
     shell_od = st.session_state['D_s'] + 2.0 * t_final
 
-    st.caption(f"✓ 상업용 쉘 두께 (t_shell): **{t_final:.0f} mm**")
-
 with col_g4:
     st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
     st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값")
@@ -269,7 +275,7 @@ with col_g4:
         st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
 
 # =========================================================
-# [F] 4. 수력학 코어 연산 (🌟 3D 기하학 Lead 보정 적용)
+# [F] 4. 수력학 코어 연산 
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -324,26 +330,19 @@ U_calc = 1.0 / ((1.0 / max(h_o, 0.1)) + st.session_state['R_fo'] + R_wall + st.s
 Area_req = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
 Area_design = Area_req * (1.0 + st.session_state['overdesign_pct'] / 100.0)
 
-# =========================================================
-# 🌟 기하학 치명적 오류 수정 (Pitch vs Lead) 🌟
-# =========================================================
 N_p_val = max(1, st.session_state['N_p'])
 p_m = st.session_state['pitch'] / 1000.0
 D_c_m = st.session_state['D_c'] / 1000.0
-
-# 리드(Lead) = 피치(p) * 병렬 튜브 수(N_p). 튜브 한 가닥이 1회전 시 상승하는 진짜 높이
 Lead_m = p_m * N_p_val
 
 Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
 Length_per_Tube = Total_Tube_Length / N_p_val
 
-# 1회전당 튜브 길이 (피타고라스 정리: 밑변=원주, 높이=리드)
 Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + Lead_m**2) if D_c_m > 0 else 1.0
 Turns_per_Tube = Length_per_Tube / Length_per_Turn
 
 dp_tube_bar = (f_c * (Length_per_Tube / (max(1e-6, d_i) / 1000.0)) * (st.session_state['t_rho'] * (v_tube ** 2) / 2.0)) / 100000.0
 
-# 쉘 코일부 수직 높이 = 권선 수 * 리드
 L_shell_m = Turns_per_Tube * Lead_m
 f_s = 0.316 / (max(Re_shell, 1.0)**0.25) 
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
@@ -468,6 +467,8 @@ with col_dl2:
 
 err_msg = []
 if lmtd_error: err_msg.append("Temperature Cross (온도 역전) 발생")
+if inner_clearance_rad < 0: err_msg.append("Mandrel - Coil 내측 간섭 발생")
+if outer_clearance_rad < 0: err_msg.append("Shell - Coil 외측 간섭 발생")
 if dp_tube_bar > st.session_state['allowable_dp_tube']: err_msg.append(f"Tube 측 ΔP 초과")
 if dp_shell_bar > st.session_state['allowable_dp_shell']: err_msg.append(f"Shell 측 ΔP 초과")
 if Shell_TT_Length_m > 10.0: err_msg.append(f"장비 총 길이 10m 초과 (레이아웃 한계)")
@@ -479,7 +480,7 @@ else:
     st.success("✅ **Datasheet Validated:** 모든 공정 및 기계적 구조 제약 조건을 통과했습니다.")
 
 # =========================================================
-# [I] 5. 3D 형상 렌더링 (🌟 Lead 반영)
+# [I] 5. 3D 형상 렌더링
 # =========================================================
 st.markdown("---")
 st.subheader("5. 3D 코일 형상 (Schematic Representation)")
@@ -490,7 +491,6 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     t_max = Turns_per_Tube * 2 * np.pi
     t_base = np.linspace(0, t_max, int(max(Turns_per_Tube * 60, 150)))
     
-    # 🌟 3D 시각화에서도 피치가 아닌 'Lead'를 기준으로 Z축 상승 반영
     z = (Lead_m * 1000.0 / (2 * np.pi)) * t_base
     coil_height = max(z) if len(z) > 0 else 1.0
     
