@@ -165,14 +165,14 @@ if lmtd_error:
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학 및 기계적 설계 (Clearance & Pitch 로직 보완)
+# [E] 3. 기하학 및 기계적 설계 (가이드 완전 복구)
 # =========================================================
 st.subheader("3. 기하학적 설계 및 기계 설계 (ASME Sec.VIII)")
 
 col_g1, col_g2, col_g3, col_g4 = st.columns(4)
 
 with col_g1:
-    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시켜 튜브 내 유속과 ΔP를 낮춥니다.")
+    st.number_input("병렬 튜브 수 (N_p, 가닥)", 1, 50, step=1, key='N_p', help="유량을 N_p개로 분산시킵니다. N_p가 커지면 튜브 상승각(Lead)이 가팔라집니다.")
     
     do_options = {'3/8" (9.53 mm)': 9.53, '1/2" (12.7 mm)': 12.7, '3/4" (19.05 mm)': 19.05, '1" (25.4 mm)': 25.4, 'Custom (직접 입력)': -1}
     do_keys = list(do_options.keys())
@@ -187,6 +187,16 @@ with col_g1:
     else:
         st.session_state['d_o'] = do_options[selected_do]
 
+    with st.expander("💡 튜브 외경(OD) 가이드"):
+        st.markdown("""
+        | 규격 (inch) | 외경 (mm) | 주요 특성 및 추천 적용 분야 |
+        | :--- | :--- | :--- |
+        | **3/8"** | 9.53 | 유속이 매우 빨라 압력 손실이 큼. 초소형 장비용. |
+        | **1/2"** | 12.7 | 일반적인 컴팩트 설계에 적합. 공간 제약 시 유리. |
+        | **3/4"** | 19.05 | 압력 손실과 제작 편의성 균형이 가장 양호 (표준). |
+        | **1"** | 25.4 | 대유량 순환 시 유리. 슬러리 적용 시 플러깅 방지 권장. |
+        """)
+
     bwg_options = {'BWG 10 (3.40 mm)': 3.40, 'BWG 12 (2.77 mm)': 2.77, 'BWG 14 (2.11 mm)': 2.11, 'BWG 16 (1.65 mm)': 1.65, 'BWG 18 (1.24 mm)': 1.24, 'BWG 20 (0.89 mm)': 0.89, 'BWG 22 (0.71 mm)': 0.71, 'Custom (직접 입력)': -1}
     bwg_keys = list(bwg_options.keys())
     bwg_vals = list(bwg_options.values())
@@ -199,6 +209,19 @@ with col_g1:
         st.session_state['t_thick'] = st.number_input("두께 직접 입력 (mm)", 0.5, 10.0, value=float(curr_t), step=0.1)
     else:
         st.session_state['t_thick'] = bwg_options[selected_bwg]
+
+    with st.expander("💡 튜브 두께(BWG) 가이드"):
+        st.markdown("""
+        | BWG | mm | 주요 적용 및 특징 |
+        | :--- | :--- | :--- |
+        | **10** | 3.40 | 고압/부식성 유체, 밴딩 반경이 매우 좁은 경우 |
+        | **12** | 2.77 | 중고압 헬리컬 코일, 기계적 강도가 요구될 때 |
+        | **14** | 2.11 | 일반적인 산업용 열교환기 튜브 표준 두께 |
+        | **16** | 1.65 | 가장 범용적인 튜브 두께 (유량 확보와 내압 균형) |
+        | **18** | 1.24 | 저압 환경, 열전달 효율 극대화 요구 시 |
+        | **20** | 0.89 | 계측기 라인 또는 매우 작은 소구경 튜브용 |
+        | **22** | 0.71 | 초소형/정밀 의료용 또는 특수 분석 장비용 |
+        """)
 
     d_i = st.session_state['d_o'] - 2 * st.session_state['t_thick']
     if d_i <= 0:
@@ -220,12 +243,11 @@ with col_g1:
         st.session_state['tube_k_wall'] = mat_dict[selected_mat]
 
 with col_g2:
-    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="파열 방지를 위해 외경의 최소 10배 이상 권장")
+    st.number_input("코일 중심 직경 (D_c, mm)", step=10.0, key='D_c', help="코일 벤딩 시 파열을 막기 위해 튜브 외경의 최소 10배 이상을 권장합니다.")
     st.caption(f"💡 추천 최소값: **{st.session_state['d_o'] * 10.0:.1f} mm**")
     
-    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채우는 코어 기둥")
+    st.number_input("Mandrel 외경 (D_m, mm)", step=5.0, key='D_mandrel', help="코일 내측 공간을 채워 쉘 유체의 바이패스(Bypass)를 막는 코어 기둥입니다.")
     
-    # 🌟 내측 반경 클리어런스 (Inner Clearance) 실시간 계산
     inner_clearance_rad = ((st.session_state['D_c'] - st.session_state['d_o']) - st.session_state['D_mandrel']) / 2.0
     if inner_clearance_rad < 0:
         st.error(f"🚨 간섭 발생! 맨드릴이 코일을 파고듭니다 ({-inner_clearance_rad:.1f} mm 겹침)")
@@ -233,14 +255,12 @@ with col_g2:
         st.caption(f"✓ 내측 틈새 (Radial Clearance): **{inner_clearance_rad:.1f} mm**")
 
 with col_g3:
-    # 🌟 최소 피치를 외경(d_o)으로 허용
     min_pitch = st.session_state['d_o']
-    st.number_input("코일 피치 (p, mm)", min_value=float(min_pitch), step=1.0, key='pitch', help="튜브 중심 간 거리. p=OD일 경우 코일이 딱 붙습니다 (제작 가능하나 Shell 열전달 저하).")
+    st.number_input("코일 피치 (p, mm)", min_value=float(min_pitch), step=1.0, key='pitch', help="상하로 인접한 서로 다른 튜브 중심 간 수직 거리입니다. p=OD일 경우 코일이 딱 붙습니다.")
     st.caption(f"💡 밀착 제작 최소값: **{min_pitch:.1f} mm** / TEMA 권장 여유: **{min_pitch*1.25:.1f} mm**")
     
     st.number_input("쉘 내경 (Shell ID, mm)", step=10.0, key='D_s', help="코일을 감싸는 압력 용기의 내부 직경")
     
-    # 🌟 외측 반경 클리어런스 (Outer Clearance) 실시간 계산
     outer_clearance_rad = (st.session_state['D_s'] - (st.session_state['D_c'] + st.session_state['d_o'])) / 2.0
     if outer_clearance_rad < 0:
         st.error(f"🚨 간섭 발생! 코일이 쉘 벽면을 뚫고 나갑니다 ({-outer_clearance_rad:.1f} mm 겹침)")
@@ -248,11 +268,36 @@ with col_g3:
         st.caption(f"✓ 외측 틈새 (Radial Clearance): **{outer_clearance_rad:.1f} mm**")
     
     st.markdown("#### ⚙️ 기계적 설계 (ASME Sec.VIII)")
-    with st.expander("ASME 쉘 두께 설계 파라미터"):
-        st.number_input("Shell 설계 압력 (bar)", step=1.0, key='design_p_shell', help="운전 압력의 110% 또는 운전 압력 + 1.5 bar")
-        st.number_input("허용 응력 (S, MPa)", step=1.0, key='allow_s_shell', help="SA-516 기준 약 137.9 MPa")
-        st.number_input("용접 효율 (E)", max_value=1.0, key='joint_e', help="RT 범위에 따라 결정 (1.0 또는 0.85)")
-        st.number_input("부식 여유 (C.A., mm)", step=0.5, key='ca_shell', help="일반적인 부식 여유 (3.0 mm)")
+    with st.expander("💡 ASME 기계 설계 가이드 (S, E, C.A.)"):
+        st.markdown("""
+        **1. 주요 재질별 허용 응력 (S)** *(※ 설계 온도 150°C 부근 기준. 정확한 값은 ASME Sec.II Part D 참조)*
+        | 재질 (Material) | ASME 규격 | 허용 응력 (MPa) |
+        | :--- | :--- | :--- |
+        | **일반 탄소강** | SA-516 Gr.70 | 137.9 |
+        | **오스테나이트 스텐레스** | SA-240 304 | 115.0 - 137.0 |
+        | **오스테나이트 스텐레스** | SA-240 316 | 115.0 - 137.0 |
+        | **듀플렉스 스텐레스** | SA-240 S31803 | 177.0 - 200.0 |
+        
+        **2. 용접 조인트 효율 (E) - ASME UW-12**
+        | RT 검사 수준 | 효율 (E) | 적용 기준 |
+        | :--- | :--- | :--- |
+        | **Full RT (전면 검사)** | 1.00 | 고압, 맹독성 유체, 두꺼운 철판 |
+        | **Spot RT (국부 검사)** | 0.85 | 일반적인 열교환기 쉘 표준 |
+        | **No RT (검사 없음)** | 0.70 | 저압 유틸리티 (물, 공기 등) |
+        
+        **3. 부식 여유 (Corrosion Allowance, C.A.)**
+        | 재질 및 환경 | C.A. (mm) | 비고 |
+        | :--- | :--- | :--- |
+        | **스텐레스강 / 합금** | 0.0 - 1.5 | 기본적으로 부식이 없다고 가정 |
+        | **탄소강 (비부식성)** | 1.5 | 최소한의 기계적 여유 |
+        | **탄소강 (일반 공정)** | 3.0 | 일반적인 플랜트 표준 (1/8 인치) |
+        | **탄소강 (가혹/슬러리)** | 6.0 | 부식 및 마모가 극심한 환경 |
+        """)
+
+    st.number_input("Shell 설계 압력 (bar)", step=1.0, key='design_p_shell', help="운전 압력의 110% 또는 운전 압력 + 1.5 bar")
+    st.number_input("허용 응력 (S, MPa)", step=1.0, key='allow_s_shell', help="선택한 재질에 따른 허용 응력 (위 가이드 참조)")
+    st.number_input("용접 효율 (E)", max_value=1.0, key='joint_e', help="RT 비파괴 검사 범위에 따라 결정 (위 가이드 참조)")
+    st.number_input("부식 여유 (C.A., mm)", step=0.5, key='ca_shell', help="설계 수명에 따른 부식 두께 추가량 (위 가이드 참조)")
 
     P_mpa = st.session_state['design_p_shell'] / 10.0
     R_mm = st.session_state['D_s'] / 2.0
@@ -265,14 +310,30 @@ with col_g3:
     st.session_state['shell_thick'] = t_final
     shell_od = st.session_state['D_s'] + 2.0 * t_final
 
+    st.caption(f"✓ 공식 산출 두께: **{t_req:.2f} mm**")
+    st.caption(f"✓ 상업용 쉘 두께 (t_shell): **{t_final:.0f} mm** 적용")
+
 with col_g4:
-    st.number_input("Tube 오염계수 R_fi", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
-    st.number_input("Shell 오염계수 R_fo", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값")
+    st.number_input("Tube 오염계수 R_fi (m²·K/W)", 0.0, 0.02, format="%.6f", key='R_fi', help="튜브 내부 유체의 스케일 저항값")
+    st.number_input("Shell 오염계수 R_fo (m²·K/W)", 0.0, 0.02, format="%.6f", key='R_fo', help="튜브 외부 스케일 저항값. 기계적 세척이 힘들어 보수적으로 잡습니다.")
     
-    st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적에 추가할 안전 여유율")
+    st.number_input("여유율 (Overdesign, %)", 0.0, 100.0, step=1.0, key='overdesign_pct', help="계산된 필요 면적에 추가할 안전 여유율 (통상 10~20% 권장)")
     
     with st.expander("💡 TEMA 오염계수(Fouling) 레퍼런스"):
-        st.markdown("| 유체 | 오염계수 (m²·K/W) |\n|:---|:---|\n| 청정수 | 0.00018 |\n| 냉각수 | 0.00035 |\n| 공정 슬러리 | 0.00150+ |")
+        st.markdown("""
+        **(단위: $m^2\cdot K/W$)**
+        | 유체 종류 (Fluid Type) | 오염계수 권장치 | 비고 |
+        | :--- | :--- | :--- |
+        | **증류수 / 청정수** | 0.00009 - 0.00018 | 스케일 발생이 거의 없음 |
+        | **순환 냉각수 (Cooling Water)** | 0.00018 - 0.00035 | 수질 관리 상태에 따라 유동적 |
+        | **해수 (Sea Water)** | 0.00035 - 0.00053 | 생물학적 오염(Bio-fouling) 주의 |
+        | **공기 / 청정 가스** | 0.00018 - 0.00035 | 입자가 없는 가스 기준 |
+        | **경질유 / 윤활유 (Lube Oil)** | 0.00018 - 0.00035 | 정제된 오일류 |
+        | **중질유 / 크루드 (Crude Oil)** | 0.00053 - 0.00123 | 점도가 높고 퇴적물 발생 쉬움 |
+        | **공정 슬러리 (Process Slurry)** | 0.00088 - 0.00200+ | 입자 퇴적 극심. 유속 유지 필수 |
+        
+        *※ 주의: 쉘(Shell) 측은 기계적 세척(Cleaning)이 매우 까다로우므로 튜브 측보다 보수적으로(높게) 잡는 것을 권장합니다.*
+        """)
 
 # =========================================================
 # [F] 4. 수력학 코어 연산 
