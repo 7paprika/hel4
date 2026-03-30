@@ -170,11 +170,10 @@ if lmtd_error:
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학적 설계 (Geometry Design)
+# [E] 3. 기하학적 설계 (Geometry Design) - Shell ID 규격화 업데이트
 # =========================================================
 st.subheader("3. 기하학적 설계 (Geometry Design)")
 
-# 🌟 설치 방향(Orientation) 및 Bounding Box 최상단 배치 🌟
 st.radio("설치 방향 (Installation Orientation)", ["Vertical (수직형)", "Horizontal (수평형)"], key='orientation', horizontal=True, help="Footprint(바닥 면적) 계산을 위해 장비의 설치 방향을 선택하십시오.")
 bbox_placeholder = st.empty()
 st.markdown("<br>", unsafe_allow_html=True)
@@ -252,13 +251,45 @@ with col_g3:
     if inner_clearance_rad < 0:
         st.error(f"🚨 간섭! Mandrel이 Coil을 파고듭니다 ({-inner_clearance_rad:.1f} mm)")
     
-    st.number_input("Shell ID (mm)", step=10.0, key='D_s', help="Coil을 감싸는 압력 용기의 내부 직경입니다.")
+    # 🌟 Shell ID 상업용 규격 매칭 로직 (NEW) 🌟
+    ds_options = {
+        'NPS 8" Pipe (ID: 202.7 mm)': 202.7,
+        'NPS 10" Pipe (ID: 254.5 mm)': 254.5,
+        'NPS 12" Pipe (ID: 304.8 mm)': 304.8,
+        'NPS 14" Pipe (ID: 336.6 mm)': 336.6,
+        'NPS 16" Pipe (ID: 387.4 mm)': 387.4,
+        'NPS 18" Pipe (ID: 438.2 mm)': 438.2,
+        'NPS 20" Pipe (ID: 489.0 mm)': 489.0,
+        'NPS 24" Pipe (ID: 590.6 mm)': 590.6,
+        'Custom (Rolled Plate, 직접입력)': -1
+    }
+    ds_keys = list(ds_options.keys())
+    ds_vals = list(ds_options.values())
+    curr_ds = st.session_state.get('D_s', 500.0)
+    try: ds_idx = ds_vals.index(curr_ds)
+    except ValueError: ds_idx = len(ds_keys) - 1
+
+    selected_ds = st.selectbox("Shell ID (mm)", ds_keys, index=ds_idx, help="NPS 24인치 이하 중소형은 표준 파이프 사용이 원가에 유리하며, 대형은 50mm 단위로 압연 제작합니다.")
+    if "Custom" in selected_ds:
+        st.session_state['D_s'] = st.number_input("Shell ID 직접 입력 (50mm 단위 권장)", 200.0, 5000.0, value=float(curr_ds), step=50.0)
+    else:
+        st.session_state['D_s'] = ds_options[selected_ds]
+
     rec_Ds = st.session_state['D_c'] + st.session_state['d_o'] + 40.0
     st.caption(f"💡 추천 최소값: **{rec_Ds:.1f} mm** (Coil 외경에서 열팽창/조립 여유 40mm 확보)")
 
     outer_clearance_rad = (st.session_state['D_s'] - (st.session_state['D_c'] + st.session_state['d_o'])) / 2.0
     if outer_clearance_rad < 0:
         st.error(f"🚨 간섭! Coil이 Shell을 뚫고 나갑니다 ({-outer_clearance_rad:.1f} mm)")
+
+    with st.expander("💡 상업용 Shell 규격 가이드"):
+        st.markdown("""
+        **1. 중소형 쉘 (NPS 24인치 이하)**
+        원가 절감을 위해 시중에서 유통되는 **Seamless / ERW Pipe**를 절단하여 쉘로 사용합니다. 위 드롭다운의 규격(Sch 40 기준 내경)을 선택하십시오.
+        
+        **2. 대형 쉘 (Custom Rolled Plate)**
+        24인치를 초과하는 거대한 쉘은 철판(Plate)을 롤러로 말아서 용접 제작합니다. 철판 로스(Loss)를 최소화하기 위해 내경을 **50 mm 단위 (예: 800, 850, 900)**로 설정하는 것이 관례입니다.
+        """)
 
 with col_g4:
     st.markdown("#### 🛡️ 오염계수 및 여유율")
@@ -272,7 +303,7 @@ with col_g4:
 st.markdown("---")
 
 # =========================================================
-# [F] 4. 기계적 설계 (Mechanical Design) - 분리
+# [F] 4. 기계적 설계 (Mechanical Design)
 # =========================================================
 st.subheader("4. 기계적 설계 (Mechanical Design - ASME Sec.VIII)")
 
@@ -322,7 +353,7 @@ shell_od = st.session_state['D_s'] + 2.0 * t_final
 st.info(f"✓ 상업용 Shell Thickness: **{t_final:.0f} mm** 확정 (ASME 이론 두께: {t_req:.2f} mm)")
 
 # =========================================================
-# [G] 백그라운드 수력학/열역학 코어 연산 (Pitch 페널티 적용)
+# [G] 백그라운드 수력학/열역학 코어 연산
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -371,11 +402,10 @@ Pr_shell = (st.session_state['s_cp'] * s_mu_pa) / max(1e-6, st.session_state['s_
 Nu_shell = 0.33 * (max(Re_shell, 1.0) ** 0.6) * (Pr_shell ** 0.33)
 h_o = (Nu_shell * st.session_state['s_k']) / max(1e-6, d_o_m)
 
-# 🌟 Pitch 밀착 사각지대 패널티 로직 (Dead-zone Penalty) 🌟
 pitch_ratio = st.session_state['pitch'] / max(1e-6, st.session_state['d_o'])
 penalty_factor = 1.0
 if pitch_ratio < 1.25:
-    penalty_factor = max(0.5, 1.0 - 2.0 * (1.25 - pitch_ratio)) # 피치가 1.0에 가까워질수록 최대 50% 열전달 효율 삭감
+    penalty_factor = max(0.5, 1.0 - 2.0 * (1.25 - pitch_ratio)) 
 h_o = h_o * penalty_factor
 
 R_wall = (d_o_m * np.log(st.session_state['d_o'] / max(1e-6, d_i))) / (2.0 * max(1e-6, st.session_state['tube_k_wall'])) if d_i > 0 else 0
@@ -403,7 +433,7 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [G] AI 자동 최적화 제안 (Optimizer)
+# [H] AI 최적화 제안 (Optimizer)
 # =========================================================
 opt_best_Dc = None
 opt_min_LTT = float('inf')
@@ -412,7 +442,6 @@ opt_best_Ds = None
 opt_p_m = (st.session_state['d_o'] * 1.25) / 1000.0
 opt_Lead_m = opt_p_m * N_p_val
 
-# 최적 D_c 찾기 루프 (10mm 단위 증가)
 for t_Dc in np.arange(st.session_state['d_o'] * 10.0, 3000.0, 10.0):
     t_Dc_m = t_Dc / 1000.0
     t_Dm = max(10.0, t_Dc - st.session_state['d_o'] - 10.0)
@@ -436,7 +465,7 @@ for t_Dc in np.arange(st.session_state['d_o'] * 10.0, 3000.0, 10.0):
     t_L_shell_m = t_Turns * opt_Lead_m
     t_L_TT = t_L_shell_m + (2.0 * t_Ds_m)
     
-    if t_Dc_m < t_L_TT: # 조건: D_c가 Shell 길이보다 작을 것
+    if t_Dc_m < t_L_TT: 
         if t_L_TT < opt_min_LTT:
             opt_min_LTT = t_L_TT
             opt_best_Dc = t_Dc
@@ -444,13 +473,12 @@ for t_Dc in np.arange(st.session_state['d_o'] * 10.0, 3000.0, 10.0):
             opt_best_Ds = t_Ds
 
 # =========================================================
-# [H] 실시간 Bounding Box 렌더링 (Section 3 최상단 Placeholder)
+# [I] 실시간 Bounding Box 렌더링 (Placeholder)
 # =========================================================
 Shell_TT_Length_m = L_shell_m + (2.0 * D_s_m) 
 Shell_TT_Length_mm = Shell_TT_Length_m * 1000.0
 shell_od_m = shell_od / 1000.0
 
-# 🌟 방향(Orientation) 기반 바닥 면적(Footprint) 산출
 if "Vertical" in st.session_state['orientation']:
     Footprint_Area = (np.pi / 4.0) * (shell_od_m ** 2)
 else:
@@ -467,13 +495,12 @@ with bbox_placeholder.container():
         b3.metric("Shell Length (T/T)", f"{Shell_TT_Length_mm:,.0f} mm", delta="안정적 구조", delta_color="normal")
     b4.metric("장비 바닥 면적 (Footprint)", f"{Footprint_Area:,.2f} m²", help="설치 방향(Vertical/Horizontal)에 따라 달라집니다.")
     
-    # AI 최적화 패널 표출
     if opt_best_Dc:
         st.success(f"💡 **[AI 최적화 제안]** N_p={N_p_val}가닥 기준, 최소 Shell 길이({opt_min_LTT*1000:,.0f} mm)를 달성하는 최적 콤보: **Coil D_c = {opt_best_Dc:,.0f} mm** (이때 D_m={opt_best_Dm:,.0f}, D_s={opt_best_Ds:,.0f}, Pitch={st.session_state['d_o']*1.25:.1f})")
     st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================================================
-# [I] 5. 상업용 데이터시트 검증 (Datasheet)
+# [J] 5. 상업용 데이터시트 검증 (Datasheet)
 # =========================================================
 st.markdown("---")
 st.subheader("5. 열전달 및 수력학 검증 (Datasheet & Report)")
@@ -587,7 +614,6 @@ if dp_shell_bar > st.session_state['allowable_dp_shell']: err_msg.append(f"Shell
 if Shell_TT_Length_m > 10.0: err_msg.append(f"장비 총 길이 10m 초과 (레이아웃 한계)")
 if d_i <= 0: err_msg.append("내경(ID) 계산 불가")
 
-# 🌟 유속 경고 로직
 if v_tube < 1.0: err_msg.append("Tube 유속 저하 (오염/침전 위험)")
 if v_tube > 3.0: err_msg.append("Tube 유속 초과 (침식 위험)")
 if v_shell < 0.2: err_msg.append("Shell 유속 저하 (열전달 사각지대 위험)")
@@ -599,7 +625,7 @@ else:
     st.success("✅ **Datasheet Validated:** 모든 공정, 수력학, 기계적 제약 조건을 통과했습니다.")
 
 # =========================================================
-# [J] 6. 3D 형상 렌더링
+# [K] 6. 3D 형상 렌더링
 # =========================================================
 st.markdown("---")
 st.subheader("6. 3D 코일 형상 (Schematic Representation)")
@@ -654,7 +680,6 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig.add_trace(go.Scatter3d(x=[sh_in_r, sh_in_r + noz_h], y=[0, 0], z=[p_m*1000/2.0, p_m*1000/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Inlet'))
     fig.add_trace(go.Scatter3d(x=[-sh_in_r, -sh_in_r - noz_h], y=[0, 0], z=[coil_height - p_m*1000/2.0, coil_height - p_m*1000/2.0], mode='lines', line=dict(color='blue', width=12), name='Shell Outlet'))
     
-    # 🌟 3D 형상 상단에 수치 텍스트 (Annotation) 표기 유지
     top_z = coil_height + 50.0
     pos_man = st.session_state['D_mandrel'] / 2.0
     pos_inner_clr = pos_man + inner_clearance_rad / 2.0
