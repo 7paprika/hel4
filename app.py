@@ -170,7 +170,7 @@ if lmtd_error:
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학적 설계 (Geometry Design) - Shell ID 규격화 업데이트
+# [E] 3. 기하학적 설계 (Geometry Design)
 # =========================================================
 st.subheader("3. 기하학적 설계 (Geometry Design)")
 
@@ -251,7 +251,6 @@ with col_g3:
     if inner_clearance_rad < 0:
         st.error(f"🚨 간섭! Mandrel이 Coil을 파고듭니다 ({-inner_clearance_rad:.1f} mm)")
     
-    # 🌟 Shell ID 상업용 규격 매칭 로직 (NEW) 🌟
     ds_options = {
         'NPS 8" Pipe (ID: 202.7 mm)': 202.7,
         'NPS 10" Pipe (ID: 254.5 mm)': 254.5,
@@ -353,7 +352,7 @@ shell_od = st.session_state['D_s'] + 2.0 * t_final
 st.info(f"✓ 상업용 Shell Thickness: **{t_final:.0f} mm** 확정 (ASME 이론 두께: {t_req:.2f} mm)")
 
 # =========================================================
-# [G] 백그라운드 수력학/열역학 코어 연산
+# [G] 백그라운드 수력학/열역학 코어 연산 (🌟 정확한 쉘 면적 공식 반영 🌟)
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -392,8 +391,18 @@ D_s_m = st.session_state['D_s'] / 1000.0
 D_man_m = st.session_state['D_mandrel'] / 1000.0
 d_o_m = st.session_state['d_o'] / 1000.0
 
+N_p_val = max(1, st.session_state['N_p'])
+p_m = st.session_state['pitch'] / 1000.0
+D_c_m = st.session_state['D_c'] / 1000.0
+Lead_m = p_m * N_p_val
+Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + Lead_m**2) if D_c_m > 0 else 1.0
+
+# 🌟 기하학적 나선 투영 면적(Exact Geometric Subtraction) 공식 적용 🌟
 A_annulus = (np.pi / 4.0) * (D_s_m**2 - D_man_m**2)
-A_free_flow = A_annulus * 0.5 
+A_tube_cross = (np.pi / 4.0) * (d_o_m**2)
+A_blocked = N_p_val * A_tube_cross * (Length_per_Turn / max(1e-6, Lead_m))
+A_free_flow = max(A_annulus * 0.1, A_annulus - A_blocked) # 10% 미만 방지 안전장치
+
 v_shell = m_cold_kg_s / (st.session_state['s_rho'] * A_free_flow) if A_free_flow > 0 else 0.0
 
 D_e_shell = D_s_m - D_man_m
@@ -414,15 +423,8 @@ U_calc = 1.0 / ((1.0 / max(h_o, 0.1)) + st.session_state['R_fo'] + R_wall + st.s
 Area_req = (Q_kW * 1000.0) / (U_calc * LMTD) if not lmtd_error else 0.0
 Area_design = Area_req * (1.0 + st.session_state['overdesign_pct'] / 100.0)
 
-N_p_val = max(1, st.session_state['N_p'])
-p_m = st.session_state['pitch'] / 1000.0
-D_c_m = st.session_state['D_c'] / 1000.0
-Lead_m = p_m * N_p_val
-
 Total_Tube_Length = Area_design / (np.pi * d_o_m) if d_o_m > 0 else 0.0
 Length_per_Tube = Total_Tube_Length / N_p_val
-
-Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + Lead_m**2) if D_c_m > 0 else 1.0
 Turns_per_Tube = Length_per_Tube / Length_per_Turn
 
 dp_tube_bar = (f_c * (Length_per_Tube / (max(1e-6, d_i) / 1000.0)) * (st.session_state['t_rho'] * (v_tube ** 2) / 2.0)) / 100000.0
@@ -433,7 +435,7 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [H] AI 최적화 제안 (Optimizer)
+# [H] AI 최적화 제안 (Optimizer) - 🌟 정확한 쉘 면적 반영
 # =========================================================
 opt_best_Dc = None
 opt_min_LTT = float('inf')
@@ -449,7 +451,11 @@ for t_Dc in np.arange(st.session_state['d_o'] * 10.0, 3000.0, 10.0):
     t_Ds = t_Dc + st.session_state['d_o'] + 40.0
     t_Ds_m = t_Ds / 1000.0
 
-    t_A_free = ((np.pi / 4.0) * (t_Ds_m**2 - t_Dm_m**2)) * 0.5
+    t_A_annulus = (np.pi / 4.0) * (t_Ds_m**2 - t_Dm_m**2)
+    t_Length_per_Turn = np.sqrt((np.pi * t_Dc_m)**2 + opt_Lead_m**2) if t_Dc_m > 0 else 1.0
+    t_A_blocked = N_p_val * ((np.pi / 4.0) * (d_o_m**2)) * (t_Length_per_Turn / max(1e-6, opt_Lead_m))
+    t_A_free = max(t_A_annulus * 0.1, t_A_annulus - t_A_blocked)
+
     t_v_shell = m_cold_kg_s / (st.session_state['s_rho'] * t_A_free) if t_A_free > 0 else 0.0
     t_Re_shell = (st.session_state['s_rho'] * t_v_shell * (t_Ds_m - t_Dm_m)) / max(1e-6, s_mu_pa)
     t_ho = ((0.33 * (max(t_Re_shell, 1.0) ** 0.6) * (Pr_shell ** 0.33)) * st.session_state['s_k']) / max(1e-6, d_o_m)
@@ -606,6 +612,9 @@ with col_dl2:
     st.info("💡 폰트 에러 없는 PDF 출력을 위해 HTML로 내보냅니다. 브라우저 인쇄(Ctrl+P) 기능을 활용하세요.")
 
 err_msg = []
+inner_clearance_rad = ((st.session_state['D_c'] - st.session_state['d_o']) - st.session_state['D_mandrel']) / 2.0
+outer_clearance_rad = (st.session_state['D_s'] - (st.session_state['D_c'] + st.session_state['d_o'])) / 2.0
+
 if lmtd_error: err_msg.append("Temperature Cross (온도 역전) 발생")
 if inner_clearance_rad < 0: err_msg.append("Mandrel - Coil 내측 간섭 발생")
 if outer_clearance_rad < 0: err_msg.append("Shell - Coil 외측 간섭 발생")
