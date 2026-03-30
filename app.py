@@ -352,7 +352,7 @@ shell_od = st.session_state['D_s'] + 2.0 * t_final
 st.info(f"✓ 상업용 Shell Thickness: **{t_final:.0f} mm** 확정 (ASME 이론 두께: {t_req:.2f} mm)")
 
 # =========================================================
-# [G] 백그라운드 수력학/열역학 코어 연산 (🌟 정확한 쉘 면적 공식 반영 🌟)
+# [G] 백그라운드 수력학/열역학 코어 연산
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -397,11 +397,10 @@ D_c_m = st.session_state['D_c'] / 1000.0
 Lead_m = p_m * N_p_val
 Length_per_Turn = np.sqrt((np.pi * D_c_m)**2 + Lead_m**2) if D_c_m > 0 else 1.0
 
-# 🌟 기하학적 나선 투영 면적(Exact Geometric Subtraction) 공식 적용 🌟
 A_annulus = (np.pi / 4.0) * (D_s_m**2 - D_man_m**2)
 A_tube_cross = (np.pi / 4.0) * (d_o_m**2)
 A_blocked = N_p_val * A_tube_cross * (Length_per_Turn / max(1e-6, Lead_m))
-A_free_flow = max(A_annulus * 0.1, A_annulus - A_blocked) # 10% 미만 방지 안전장치
+A_free_flow = max(A_annulus * 0.1, A_annulus - A_blocked)
 
 v_shell = m_cold_kg_s / (st.session_state['s_rho'] * A_free_flow) if A_free_flow > 0 else 0.0
 
@@ -435,7 +434,7 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [H] AI 최적화 제안 (Optimizer) - 🌟 정확한 쉘 면적 반영
+# [H] AI 최적화 제안 (Optimizer)
 # =========================================================
 opt_best_Dc = None
 opt_min_LTT = float('inf')
@@ -612,9 +611,6 @@ with col_dl2:
     st.info("💡 폰트 에러 없는 PDF 출력을 위해 HTML로 내보냅니다. 브라우저 인쇄(Ctrl+P) 기능을 활용하세요.")
 
 err_msg = []
-inner_clearance_rad = ((st.session_state['D_c'] - st.session_state['d_o']) - st.session_state['D_mandrel']) / 2.0
-outer_clearance_rad = (st.session_state['D_s'] - (st.session_state['D_c'] + st.session_state['d_o'])) / 2.0
-
 if lmtd_error: err_msg.append("Temperature Cross (온도 역전) 발생")
 if inner_clearance_rad < 0: err_msg.append("Mandrel - Coil 내측 간섭 발생")
 if outer_clearance_rad < 0: err_msg.append("Shell - Coil 외측 간섭 발생")
@@ -634,7 +630,7 @@ else:
     st.success("✅ **Datasheet Validated:** 모든 공정, 수력학, 기계적 제약 조건을 통과했습니다.")
 
 # =========================================================
-# [K] 6. 3D 형상 렌더링
+# [K] 6. 3D 형상 렌더링 (🌟 Real 3D Mesh Tube)
 # =========================================================
 st.markdown("---")
 st.subheader("6. 3D 코일 형상 (Schematic Representation)")
@@ -642,21 +638,69 @@ st.subheader("6. 3D 코일 형상 (Schematic Representation)")
 if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     fig = go.Figure()
     
-    t_max = Turns_per_Tube * 2 * np.pi
-    t_base = np.linspace(0, t_max, int(max(Turns_per_Tube * 60, 150)))
+    t_max_full = Turns_per_Tube * 2 * np.pi
+    coil_height = (Lead_m * 1000.0 / (2 * np.pi)) * t_max_full if Turns_per_Tube > 0 else 1.0
     
-    z = (Lead_m * 1000.0 / (2 * np.pi)) * t_base
-    coil_height = max(z) if len(z) > 0 else 1.0
+    # 🌟 Real 3D Mesh 렌더링 (Option 1: 브라우저 부하 방지를 위해 최대 3바퀴까지만 실제 볼륨으로 렌더링)
+    render_turns = min(Turns_per_Tube, 3.0)
+    t_max_render = render_turns * 2 * np.pi
+    num_t = int(max(render_turns * 40, 50))
+    num_theta = 12
+    t_vals = np.linspace(0, t_max_render, num_t)
+    theta_vals = np.linspace(0, 2 * np.pi, num_theta)
+    T_grid, Theta_grid = np.meshgrid(t_vals, theta_vals)
+    
+    R_c = st.session_state['D_c'] / 2.0
+    r_tube = st.session_state['d_o'] / 2.0
+    c_val = (Lead_m * 1000.0) / (2 * np.pi)
+    denom = np.sqrt(R_c**2 + c_val**2) if (R_c**2 + c_val**2) > 0 else 1.0
     
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
     for i in range(int(N_p_val)):
         angle_offset = i * (2 * np.pi / N_p_val)
-        x = (st.session_state['D_c'] / 2) * np.cos(t_base + angle_offset)
-        y = (st.session_state['D_c'] / 2) * np.sin(t_base + angle_offset)
+        t_shifted = T_grid + angle_offset
+        
+        # 튜브 중심선
+        C_x = R_c * np.cos(t_shifted)
+        C_y = R_c * np.sin(t_shifted)
+        C_z = c_val * T_grid
+        
+        # 기하학적 법선 벡터 (Normal)
+        N_x = -np.cos(t_shifted)
+        N_y = -np.sin(t_shifted)
+        N_z = np.zeros_like(t_shifted)
+        
+        # 기하학적 종법선 벡터 (Binormal)
+        B_x = (c_val / denom) * np.sin(t_shifted)
+        B_y = -(c_val / denom) * np.cos(t_shifted)
+        B_z = (R_c / denom) * np.ones_like(t_shifted)
+        
+        # 매개변수 곡면 방정식 (Parametric Surface)
+        X = C_x + r_tube * (N_x * np.cos(Theta_grid) + B_x * np.sin(Theta_grid))
+        Y = C_y + r_tube * (N_y * np.cos(Theta_grid) + B_y * np.sin(Theta_grid))
+        Z = C_z + r_tube * (N_z * np.cos(Theta_grid) + B_z * np.sin(Theta_grid))
+        
+        tube_color = colors[i % len(colors)]
+        
+        fig.add_trace(go.Surface(
+            x=X, y=Y, z=Z,
+            colorscale=[[0, tube_color], [1, tube_color]],
+            showscale=False,
+            name=f'Coil {i+1} (Real OD)',
+            lighting=dict(ambient=0.5, diffuse=0.8, specular=0.5, roughness=0.5),
+            hoverinfo='skip'
+        ))
+        
+    # 만약 실제 코일이 3바퀴보다 크다면, 상단에 잘렸음을 명시하는 3D 텍스트 추가
+    if Turns_per_Tube > 3.0:
         fig.add_trace(go.Scatter3d(
-            x=x, y=y, z=z, mode='lines',
-            line=dict(color=colors[i % len(colors)], width=6),
-            name=f'Coil {i+1}'
+            x=[0], y=[0], z=[c_val * t_max_render + st.session_state['d_o'] * 2.0],
+            mode='text',
+            text=["(Coil Rendering Truncated to 3 Turns for Performance)"],
+            textposition="top center",
+            textfont=dict(color='red', size=14),
+            name='Truncation Info',
+            hoverinfo='skip'
         ))
         
     z_surf = np.linspace(0, coil_height, 20)
@@ -681,8 +725,8 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     in_x = (st.session_state['D_c'] / 2) * np.cos(0)
     in_y = (st.session_state['D_c'] / 2) * np.sin(0)
     fig.add_trace(go.Scatter3d(x=[in_x, in_x], y=[in_y, in_y], z=[coil_height, coil_height + noz_h], mode='lines', line=dict(color='red', width=12), name='Tube Inlet'))
-    out_x = (st.session_state['D_c'] / 2) * np.cos(t_max % (2 * np.pi))
-    out_y = (st.session_state['D_c'] / 2) * np.sin(t_max % (2 * np.pi))
+    out_x = (st.session_state['D_c'] / 2) * np.cos(t_max_full % (2 * np.pi))
+    out_y = (st.session_state['D_c'] / 2) * np.sin(t_max_full % (2 * np.pi))
     fig.add_trace(go.Scatter3d(x=[out_x, out_x], y=[out_y, out_y], z=[0, -noz_h], mode='lines', line=dict(color='red', width=12), name='Tube Outlet'))
     
     sh_in_r = st.session_state['D_s'] / 2.0
