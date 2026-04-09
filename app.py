@@ -9,7 +9,7 @@ st.title("플랜트 공정 설계: Helical Tube Heat Exchanger 최적화")
 st.markdown("---")
 
 # =========================================================
-# [A] 글로벌 상태(Session State) 초기화
+# [A] 글로벌 상태(Session State) 초기화 (이전 코드 유지)
 # =========================================================
 init_state = {
     'tag_no': 'HE-101', 
@@ -55,7 +55,7 @@ def apply_json():
         st.error(f"🚨 데이터 로드 실패: {e}")
 
 # =========================================================
-# [B] 환경설정 및 사이드바
+# [B] 환경설정 및 사이드바 (이전 코드 유지)
 # =========================================================
 with st.sidebar:
     st.header("📋 Document Control")
@@ -72,7 +72,7 @@ with st.sidebar:
 st.subheader(f"🏷️ Equipment Tag: **{st.session_state['tag_no']}**")
 
 # =========================================================
-# [C] 1. 유체 식별 및 물성치
+# [C] 1. 유체 식별 및 물성치 (이전 코드 유지)
 # =========================================================
 st.subheader("1. 유체 식별 및 물성치")
 st.radio("Tube 유체 상(Phase) 선택", ["Liquid (뉴턴 유체 - 물, 오일 등)", "Slurry (비뉴턴 유체 - 고농도 혼합물)"], key='fluid_type', horizontal=True)
@@ -106,7 +106,7 @@ with col_shell:
 st.markdown("---")
 
 # =========================================================
-# [D] 2. 공정 운전 조건
+# [D] 2. 공정 운전 조건 (Energy Balance) (이전 코드 유지)
 # =========================================================
 st.subheader("2. 공정 운전 조건 (Energy Balance)")
 
@@ -170,7 +170,7 @@ if lmtd_error:
 st.markdown("---")
 
 # =========================================================
-# [E] 3. 기하학적 설계 (Geometry Design) - 예외 처리 로직 추가
+# [E] 3. 기하학적 설계 (Geometry Design) - 예외 처리 로직 추가 (이전 코드 유지)
 # =========================================================
 st.subheader("3. 기하학적 설계 (Geometry Design)")
 
@@ -192,7 +192,6 @@ with col_g1:
 
     selected_do = st.selectbox("Tube OD (외경)", do_keys, index=do_idx, help="표준: 19.05 mm (3/4\"), 슬러리/고점도: 25.4 mm (1\") 이상 권장")
     if "Custom" in selected_do:
-        # 🌟 에러 방지: 과거 JSON의 값이 5~100 사이가 아닐 경우를 대비한 Bounding
         safe_do = max(5.0, min(100.0, float(curr_do)))
         st.session_state['d_o'] = st.number_input("Tube OD 직접 입력 (mm)", 5.0, 100.0, value=safe_do, step=0.1)
     else:
@@ -210,7 +209,6 @@ with col_g1:
 
     selected_bwg = st.selectbox("Tube Thickness (BWG)", bwg_keys, index=bwg_idx, help="일반적인 산업용 표준은 BWG 14 (2.11 mm) 또는 BWG 16 (1.65 mm) 입니다.")
     if "Custom" in selected_bwg:
-        # 🌟 에러 방지: Bounding
         safe_t = max(0.5, min(10.0, float(curr_t)))
         st.session_state['t_thick'] = st.number_input("Tube 두께 직접 입력 (mm)", 0.5, 10.0, value=safe_t, step=0.1)
     else:
@@ -274,7 +272,6 @@ with col_g3:
 
     selected_ds = st.selectbox("Shell ID (mm)", ds_keys, index=ds_idx, help="NPS 24인치 이하 중소형은 표준 파이프 사용이 원가에 유리하며, 대형은 50mm 단위로 압연 제작합니다.")
     if "Custom" in selected_ds:
-        # 🌟 에러 방지: 과거 JSON의 D_s 값이 min/max 범위를 벗어나 앱이 터지는 현상을 막는 Bounding 로직 🌟
         safe_ds = max(200.0, min(5000.0, float(curr_ds)))
         st.session_state['D_s'] = st.number_input("Shell ID 직접 입력 (50mm 단위 권장)", 200.0, 5000.0, value=safe_ds, step=50.0)
     else:
@@ -308,7 +305,7 @@ with col_g4:
 st.markdown("---")
 
 # =========================================================
-# [F] 4. 기계적 설계 (Mechanical Design)
+# [F] 4. 기계적 설계 (Mechanical Design) (이전 코드 유지)
 # =========================================================
 st.subheader("4. 기계적 설계 (Mechanical Design - ASME Sec.VIII)")
 
@@ -358,7 +355,7 @@ shell_od = st.session_state['D_s'] + 2.0 * t_final
 st.info(f"✓ 상업용 Shell Thickness: **{t_final:.0f} mm** 확정 (ASME 이론 두께: {t_req:.2f} mm)")
 
 # =========================================================
-# [G] 백그라운드 수력학/열역학 코어 연산
+# [G] 백그라운드 수력학/열역학 코어 연산 (이전 코드 유지)
 # =========================================================
 t_mu_pa = st.session_state.get('t_mu', 1.0) / 1000.0
 s_mu_pa = st.session_state.get('s_mu', 1.0) / 1000.0
@@ -440,7 +437,7 @@ f_s = 0.316 / (max(Re_shell, 1.0)**0.25)
 dp_shell_bar = (f_s * (L_shell_m / max(1e-6, D_e_shell)) * (st.session_state['s_rho'] * (v_shell ** 2) / 2.0)) / 100000.0
 
 # =========================================================
-# [H] AI 최적화 제안 (Optimizer)
+# [H] AI 최적화 제안 (Optimizer) (이전 코드 유지)
 # =========================================================
 opt_best_Dc = None
 opt_min_LTT = float('inf')
@@ -484,7 +481,7 @@ for t_Dc in np.arange(st.session_state['d_o'] * 10.0, 3000.0, 10.0):
             opt_best_Ds = t_Ds
 
 # =========================================================
-# [I] 실시간 Bounding Box 렌더링
+# [I] 실시간 Bounding Box 렌더링 (이전 코드 유지)
 # =========================================================
 Shell_TT_Length_m = L_shell_m + (2.0 * D_s_m) 
 Shell_TT_Length_mm = Shell_TT_Length_m * 1000.0
@@ -511,7 +508,7 @@ with bbox_placeholder.container():
     st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================================================
-# [J] 5. 상업용 데이터시트 검증 (Datasheet)
+# [J] 5. 상업용 데이터시트 검증 (Datasheet) (이전 코드 유지)
 # =========================================================
 st.markdown("---")
 st.subheader("5. 열전달 및 수력학 검증 (Datasheet & Report)")
@@ -636,7 +633,7 @@ else:
     st.success("✅ **Datasheet Validated:** 모든 공정, 수력학, 기계적 제약 조건을 통과했습니다.")
 
 # =========================================================
-# [K] 6. 3D 형상 렌더링
+# [K] 6. 3D 형상 렌더링 (🌟 Real 3D Mesh Tube)
 # =========================================================
 st.markdown("---")
 st.subheader("6. 3D 코일 형상 (Schematic Representation)")
@@ -647,6 +644,7 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
     t_max_full = Turns_per_Tube * 2 * np.pi
     coil_height = (Lead_m * 1000.0 / (2 * np.pi)) * t_max_full if Turns_per_Tube > 0 else 1.0
     
+    # 🌟 Real 3D Mesh 렌더링 (Option 1: 브라우저 부하 방지를 위해 최대 3바퀴까지만 실제 볼륨으로 렌더링)
     render_turns = min(Turns_per_Tube, 3.0)
     t_max_render = render_turns * 2 * np.pi
     num_t = int(max(render_turns * 40, 50))
@@ -665,18 +663,22 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
         angle_offset = i * (2 * np.pi / N_p_val)
         t_shifted = T_grid + angle_offset
         
+        # 튜브 중심선
         C_x = R_c * np.cos(t_shifted)
         C_y = R_c * np.sin(t_shifted)
         C_z = c_val * T_grid
         
+        # 기하학적 법선 벡터 (Normal)
         N_x = -np.cos(t_shifted)
         N_y = -np.sin(t_shifted)
         N_z = np.zeros_like(t_shifted)
         
+        # 기하학적 종법선 벡터 (Binormal)
         B_x = (c_val / denom) * np.sin(t_shifted)
         B_y = -(c_val / denom) * np.cos(t_shifted)
         B_z = (R_c / denom) * np.ones_like(t_shifted)
         
+        # 매개변수 곡면 방정식 (Parametric Surface)
         X = C_x + r_tube * (N_x * np.cos(Theta_grid) + B_x * np.sin(Theta_grid))
         Y = C_y + r_tube * (N_y * np.cos(Theta_grid) + B_y * np.sin(Theta_grid))
         Z = C_z + r_tube * (N_z * np.cos(Theta_grid) + B_z * np.sin(Theta_grid))
@@ -692,6 +694,7 @@ if Turns_per_Tube > 0 and Turns_per_Tube < 2000 and d_i > 0 and not lmtd_error:
             hoverinfo='skip'
         ))
         
+    # 만약 실제 코일이 3바퀴보다 크다면, 상단에 잘렸음을 명시하는 3D 텍스트 추가
     if Turns_per_Tube > 3.0:
         fig.add_trace(go.Scatter3d(
             x=[0], y=[0], z=[c_val * t_max_render + st.session_state['d_o'] * 2.0],
