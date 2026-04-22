@@ -1024,7 +1024,7 @@ if Turns_per_Tube > 0 and d_i > 0 and not lmtd_error:
     tab_cs, tab_ls, tab_uw = st.tabs(["⭕ 횡단면도 (Cross-Section)", "📐 종단면도 (Longitudinal)", "📏 코일 전개도 (Unwound)"])
 
     # ========== TAB 1: 횡단면도 ==========
-        with tab_cs:
+    with tab_cs:
             st.caption("🔍 코일 중심축에 직교하는 횡단면 — 리드각(Lead Angle)에 의한 튜브 단면 왜곡(타원화 및 곡률) 수학적 보정 반영")
             fig_cs = go.Figure()
             _th = np.linspace(0, 2*np.pi, 200)
