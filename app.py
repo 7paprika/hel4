@@ -1024,125 +1024,156 @@ if Turns_per_Tube > 0 and d_i > 0 and not lmtd_error:
     tab_cs, tab_ls, tab_uw = st.tabs(["⭕ 횡단면도 (Cross-Section)", "📐 종단면도 (Longitudinal)", "📏 코일 전개도 (Unwound)"])
 
     # ========== TAB 1: 횡단면도 ==========
-    with tab_cs:
-        st.caption("🔍 코일 중심축에 직교하는 횡단면 — Shell / Mandrel / Coil 동심 구조 및 Clearance")
-        fig_cs = go.Figure()
-        _th = np.linspace(0, 2*np.pi, 200)
-        _r_sod = shell_od / 2.0
-        _r_sid = st.session_state['D_s'] / 2.0
-        _r_man = st.session_state['D_mandrel'] / 2.0
-        _r_cl = st.session_state['D_c'] / 2.0
-        _r_to = st.session_state['d_o'] / 2.0
-        _r_ti = d_i / 2.0
+        with tab_cs:
+            st.caption("🔍 코일 중심축에 직교하는 횡단면 — 리드각(Lead Angle)에 의한 튜브 단면 왜곡(타원화 및 곡률) 수학적 보정 반영")
+            fig_cs = go.Figure()
+            _th = np.linspace(0, 2*np.pi, 200)
+            _r_sod = shell_od / 2.0
+            _r_sid = st.session_state['D_s'] / 2.0
+            _r_man = st.session_state['D_mandrel'] / 2.0
+            _r_cl = st.session_state['D_c'] / 2.0
+            _r_to = st.session_state['d_o'] / 2.0
+            _r_ti = d_i / 2.0
 
-        # Shell wall ring (OD→ID)
-        fig_cs.add_trace(go.Scatter(
-            x=np.concatenate([_r_sod*np.cos(_th), _r_sid*np.cos(_th[::-1])]).tolist(),
-            y=np.concatenate([_r_sod*np.sin(_th), _r_sid*np.sin(_th[::-1])]).tolist(),
-            fill='toself', fillcolor='rgba(120,144,156,0.3)', mode='lines',
-            line=dict(color='#455A64', width=2),
-            name=f'Shell Wall (t={st.session_state["shell_thick"]:.0f}mm)'))
+            # Shell wall ring (OD→ID)
+            fig_cs.add_trace(go.Scatter(
+                x=np.concatenate([_r_sod*np.cos(_th), _r_sid*np.cos(_th[::-1])]).tolist(),
+                y=np.concatenate([_r_sod*np.sin(_th), _r_sid*np.sin(_th[::-1])]).tolist(),
+                fill='toself', fillcolor='rgba(120,144,156,0.3)', mode='lines',
+                line=dict(color='#455A64', width=2),
+                name=f'Shell Wall (t={st.session_state["shell_thick"]:.0f}mm)'))
 
-        # Mandrel (solid)
-        fig_cs.add_trace(go.Scatter(
-            x=(_r_man*np.cos(_th)).tolist(), y=(_r_man*np.sin(_th)).tolist(),
-            fill='toself', fillcolor='rgba(117,117,117,0.3)', mode='lines',
-            line=dict(color='#616161', width=2),
-            name=f'Mandrel Ø{st.session_state["D_mandrel"]:.1f}'))
+            # Mandrel (solid)
+            fig_cs.add_trace(go.Scatter(
+                x=(_r_man*np.cos(_th)).tolist(), y=(_r_man*np.sin(_th)).tolist(),
+                fill='toself', fillcolor='rgba(117,117,117,0.3)', mode='lines',
+                line=dict(color='#616161', width=2),
+                name=f'Mandrel Ø{st.session_state["D_mandrel"]:.1f}'))
 
-        # Coil CL (D_c)
-        fig_cs.add_trace(go.Scatter(
-            x=(_r_cl*np.cos(_th)).tolist(), y=(_r_cl*np.sin(_th)).tolist(),
-            mode='lines', line=dict(color='#E91E63', width=1.5, dash='dashdot'),
-            name=f'Coil CL (D_c={st.session_state["D_c"]:.1f})'))
+            # Coil CL (D_c)
+            fig_cs.add_trace(go.Scatter(
+                x=(_r_cl*np.cos(_th)).tolist(), y=(_r_cl*np.sin(_th)).tolist(),
+                mode='lines', line=dict(color='#E91E63', width=1.5, dash='dashdot'),
+                name=f'Coil CL (D_c={st.session_state["D_c"]:.1f})'))
 
-        # Tube cross-sections
-        _tt = np.linspace(0, 2*np.pi, 80)
-        _t_lc = ['#1565C0','#E65100','#2E7D32','#C62828','#6A1B9A','#4E342E','#00838F','#AD1457']
-        _t_fc = ['rgba(21,101,192,0.3)','rgba(230,81,0,0.3)','rgba(46,125,50,0.3)','rgba(198,40,40,0.3)',
-                 'rgba(106,27,154,0.3)','rgba(78,52,46,0.3)','rgba(0,131,143,0.3)','rgba(173,20,87,0.3)']
-        for _i in range(N_p_val):
-            _a = _i * (2*np.pi / N_p_val)
-            _cx = _r_cl * np.cos(_a)
-            _cy = _r_cl * np.sin(_a)
-            _ci = _i % len(_t_lc)
-            if _r_ti > 0:
-                fig_cs.add_trace(go.Scatter(
-                    x=np.concatenate([_cx+_r_to*np.cos(_tt), _cx+_r_ti*np.cos(_tt[::-1])]).tolist(),
-                    y=np.concatenate([_cy+_r_to*np.sin(_tt), _cy+_r_ti*np.sin(_tt[::-1])]).tolist(),
-                    fill='toself', fillcolor=_t_fc[_ci], mode='lines',
-                    line=dict(color=_t_lc[_ci], width=1.5), name=f'Tube #{_i+1}'))
-                fig_cs.add_trace(go.Scatter(
-                    x=(_cx+_r_ti*np.cos(_tt)).tolist(), y=(_cy+_r_ti*np.sin(_tt)).tolist(),
-                    fill='toself', fillcolor='rgba(240,248,255,0.8)', mode='lines',
-                    line=dict(color=_t_lc[_ci], width=0.8, dash='dot'), showlegend=False))
+            # --- 🌟 수학적 튜브 횡단면 (Helical Cut) 도출 ---
+            _lead = st.session_state['pitch'] * N_p_val
+            _k = _lead / (2 * np.pi)
+            
+            def get_cut_contour(r_tube, theta_0, R_center, k_val):
+                """헬릭스 곡면을 수평으로 절단했을 때 나타나는 단면의 테두리 좌표를 반환"""
+                if k_val == 0 or r_tube <= 0: return [], []
+                # 수평 절단면이 튜브 내에 존재하는 최대 각도 범위
+                theta_max = min(r_tube / k_val, np.pi) 
+                th_vals = np.linspace(-theta_max, theta_max, 60)
+                
+                # 수평 단면의 반경 방향 방정식: R(θ) = R_c ± r_tube * sqrt(1 - (k*θ / r_tube)^2)
+                rad_term = np.sqrt(np.clip(1.0 - (k_val * th_vals / r_tube)**2, 0, 1))
+                R_outer = R_center + r_tube * rad_term
+                R_inner = R_center - r_tube * rad_term
+                
+                # 외곽선 폐곡선 생성 (바깥쪽 호 -> 안쪽 호)
+                th_contour = np.concatenate([th_vals, th_vals[::-1], [th_vals[0]]])
+                R_contour = np.concatenate([R_outer, R_inner[::-1], [R_outer[0]]])
+                
+                th_actual = theta_0 + th_contour
+                return (R_contour * np.cos(th_actual)).tolist(), (R_contour * np.sin(th_actual)).tolist()
 
-        # Dimension annotations
-        _shapes_cs = []
-        _annots_cs = []
+            _t_lc = ['#1565C0','#E65100','#2E7D32','#C62828','#6A1B9A','#4E342E','#00838F','#AD1457']
+            _t_fc = ['rgba(21,101,192,0.35)','rgba(230,81,0,0.35)','rgba(46,125,50,0.35)','rgba(198,40,40,0.35)',
+                     'rgba(106,27,154,0.35)','rgba(78,52,46,0.35)','rgba(0,131,143,0.35)','rgba(173,20,87,0.35)']
+            
+            for _i in range(int(N_p_val)):
+                _a = _i * (2 * np.pi / N_p_val)
+                _ci = _i % len(_t_lc)
+                
+                # 외경 테두리 도출
+                x_out, y_out = get_cut_contour(_r_to, _a, _r_cl, _k)
+                if _r_ti > 0:
+                    # 내경 테두리 도출
+                    x_in, y_in = get_cut_contour(_r_ti, _a, _r_cl, _k)
+                    
+                    # 외경과 내경을 결합하여 중공(Hole)이 있는 실제 튜브 절단면 렌더링
+                    x_trace = x_out + [None] + x_in
+                    y_trace = y_out + [None] + y_in
+                    
+                    fig_cs.add_trace(go.Scatter(
+                        x=x_trace, y=y_trace,
+                        fill='toself', fillcolor=_t_fc[_ci], mode='lines',
+                        line=dict(color=_t_lc[_ci], width=1.5), name=f'Tube #{_i+1} (Cut)'
+                    ))
+                    # 내경 윤곽선을 점선으로 추가 표시
+                    fig_cs.add_trace(go.Scatter(
+                        x=x_in, y=y_in,
+                        mode='lines', line=dict(color=_t_lc[_ci], width=0.8, dash='dot'), showlegend=False
+                    ))
 
-        # Inner Clearance (45° direction)
-        _ie = _r_cl - _r_to
-        if inner_clearance_rad > 2:
-            _ad = np.pi / 4
-            _shapes_cs.append(dict(type='line', x0=_r_man*np.cos(_ad), y0=_r_man*np.sin(_ad),
-                x1=_ie*np.cos(_ad), y1=_ie*np.sin(_ad), line=dict(color='#D32F2F', width=1.5, dash='dot')))
-            _annots_cs.append(dict(x=(_r_man+_ie)/2*np.cos(_ad), y=(_r_man+_ie)/2*np.sin(_ad),
-                text=f'<b>Inner Clr.={inner_clearance_rad:.1f}</b>', showarrow=False,
-                font=dict(size=10, color='#D32F2F'), bgcolor='rgba(255,255,255,0.9)', yshift=12))
+            # --- Dimension annotations (치수선 표기) ---
+            _shapes_cs = []
+            _annots_cs = []
 
-        # Outer Clearance (45° direction)
-        _oe = _r_cl + _r_to
-        if outer_clearance_rad > 2:
-            _ad = np.pi / 4
-            _shapes_cs.append(dict(type='line', x0=_oe*np.cos(_ad), y0=_oe*np.sin(_ad),
-                x1=_r_sid*np.cos(_ad), y1=_r_sid*np.sin(_ad), line=dict(color='#1565C0', width=1.5, dash='dot')))
-            _annots_cs.append(dict(x=(_oe+_r_sid)/2*np.cos(_ad), y=(_oe+_r_sid)/2*np.sin(_ad),
-                text=f'<b>Outer Clr.={outer_clearance_rad:.1f}</b>', showarrow=False,
-                font=dict(size=10, color='#1565C0'), bgcolor='rgba(255,255,255,0.9)', yshift=12))
+            # Inner Clearance
+            _ie = _r_cl - _r_to
+            if inner_clearance_rad > 2:
+                _ad = np.pi / 4
+                _shapes_cs.append(dict(type='line', x0=_r_man*np.cos(_ad), y0=_r_man*np.sin(_ad),
+                    x1=_ie*np.cos(_ad), y1=_ie*np.sin(_ad), line=dict(color='#D32F2F', width=1.5, dash='dot')))
+                _annots_cs.append(dict(x=(_r_man+_ie)/2*np.cos(_ad), y=(_r_man+_ie)/2*np.sin(_ad),
+                    text=f'<b>Inner Clr.={inner_clearance_rad:.1f}</b>', showarrow=False,
+                    font=dict(size=10, color='#D32F2F'), bgcolor='rgba(255,255,255,0.9)', yshift=12))
 
-        # Shell ID dimension (top)
-        _dy = _r_sod + 20
-        _shapes_cs.extend([
-            dict(type='line', x0=-_r_sid, y0=_dy, x1=_r_sid, y1=_dy, line=dict(color='#333', width=1)),
-            dict(type='line', x0=-_r_sid, y0=_r_sid+5, x1=-_r_sid, y1=_dy+10, line=dict(color='#333', width=0.5)),
-            dict(type='line', x0=_r_sid, y0=_r_sid+5, x1=_r_sid, y1=_dy+10, line=dict(color='#333', width=0.5))])
-        _annots_cs.append(dict(x=0, y=_dy, text=f'<b>Shell ID = {st.session_state["D_s"]:.1f} mm</b>',
-            showarrow=False, font=dict(size=11, color='#333'), bgcolor='rgba(255,255,255,0.9)', yshift=14))
+            # Outer Clearance
+            _oe = _r_cl + _r_to
+            if outer_clearance_rad > 2:
+                _ad = np.pi / 4
+                _shapes_cs.append(dict(type='line', x0=_oe*np.cos(_ad), y0=_oe*np.sin(_ad),
+                    x1=_r_sid*np.cos(_ad), y1=_r_sid*np.sin(_ad), line=dict(color='#1565C0', width=1.5, dash='dot')))
+                _annots_cs.append(dict(x=(_oe+_r_sid)/2*np.cos(_ad), y=(_oe+_r_sid)/2*np.sin(_ad),
+                    text=f'<b>Outer Clr.={outer_clearance_rad:.1f}</b>', showarrow=False,
+                    font=dict(size=10, color='#1565C0'), bgcolor='rgba(255,255,255,0.9)', yshift=12))
 
-        # Mandrel OD dimension (bottom)
-        _dy2 = -(_r_sod + 20)
-        _shapes_cs.extend([
-            dict(type='line', x0=-_r_man, y0=_dy2, x1=_r_man, y1=_dy2, line=dict(color='#616161', width=1)),
-            dict(type='line', x0=-_r_man, y0=-_r_man-5, x1=-_r_man, y1=_dy2-10, line=dict(color='#616161', width=0.5)),
-            dict(type='line', x0=_r_man, y0=-_r_man-5, x1=_r_man, y1=_dy2-10, line=dict(color='#616161', width=0.5))])
-        _annots_cs.append(dict(x=0, y=_dy2, text=f'Mandrel OD = {st.session_state["D_mandrel"]:.1f} mm',
-            showarrow=False, font=dict(size=10, color='#616161'), bgcolor='rgba(255,255,255,0.9)', yshift=-14))
+            # Shell ID dimension
+            _dy = _r_sod + 20
+            _shapes_cs.extend([
+                dict(type='line', x0=-_r_sid, y0=_dy, x1=_r_sid, y1=_dy, line=dict(color='#333', width=1)),
+                dict(type='line', x0=-_r_sid, y0=_r_sid+5, x1=-_r_sid, y1=_dy+10, line=dict(color='#333', width=0.5)),
+                dict(type='line', x0=_r_sid, y0=_r_sid+5, x1=_r_sid, y1=_dy+10, line=dict(color='#333', width=0.5))])
+            _annots_cs.append(dict(x=0, y=_dy, text=f'<b>Shell ID = {st.session_state["D_s"]:.1f} mm</b>',
+                showarrow=False, font=dict(size=11, color='#333'), bgcolor='rgba(255,255,255,0.9)', yshift=14))
 
-        # D_c dimension (left)
-        _dx = -(_r_sod + 20)
-        _shapes_cs.extend([
-            dict(type='line', x0=_dx, y0=-_r_cl, x1=_dx, y1=_r_cl, line=dict(color='#E91E63', width=1)),
-            dict(type='line', x0=-_r_cl-5, y0=-_r_cl, x1=_dx-10, y1=-_r_cl, line=dict(color='#E91E63', width=0.5)),
-            dict(type='line', x0=-_r_cl-5, y0=_r_cl, x1=_dx-10, y1=_r_cl, line=dict(color='#E91E63', width=0.5))])
-        _annots_cs.append(dict(x=_dx, y=0, text=f'D_c={st.session_state["D_c"]:.1f}',
-            showarrow=False, font=dict(size=10, color='#E91E63'), bgcolor='rgba(255,255,255,0.9)',
-            xshift=-5, textangle=-90))
+            # Mandrel OD dimension
+            _dy2 = -(_r_sod + 20)
+            _shapes_cs.extend([
+                dict(type='line', x0=-_r_man, y0=_dy2, x1=_r_man, y1=_dy2, line=dict(color='#616161', width=1)),
+                dict(type='line', x0=-_r_man, y0=-_r_man-5, x1=-_r_man, y1=_dy2-10, line=dict(color='#616161', width=0.5)),
+                dict(type='line', x0=_r_man, y0=-_r_man-5, x1=_r_man, y1=_dy2-10, line=dict(color='#616161', width=0.5))])
+            _annots_cs.append(dict(x=0, y=_dy2, text=f'Mandrel OD = {st.session_state["D_mandrel"]:.1f} mm',
+                showarrow=False, font=dict(size=10, color='#616161'), bgcolor='rgba(255,255,255,0.9)', yshift=-14))
 
-        # Tube callout
-        if N_p_val > 0:
-            _annots_cs.append(dict(x=_r_cl+_r_to+5, y=_r_to+15,
-                text=f'OD={st.session_state["d_o"]:.1f}<br>ID={d_i:.1f}<br>t={st.session_state["t_thick"]:.2f}',
-                showarrow=True, arrowhead=2, arrowcolor='#1565C0', ax=50, ay=-30,
-                font=dict(size=9, color='#1565C0'), bgcolor='rgba(255,255,255,0.9)'))
+            # D_c dimension
+            _dx = -(_r_sod + 20)
+            _shapes_cs.extend([
+                dict(type='line', x0=_dx, y0=-_r_cl, x1=_dx, y1=_r_cl, line=dict(color='#E91E63', width=1)),
+                dict(type='line', x0=-_r_cl-5, y0=-_r_cl, x1=_dx-10, y1=-_r_cl, line=dict(color='#E91E63', width=0.5)),
+                dict(type='line', x0=-_r_cl-5, y0=_r_cl, x1=_dx-10, y1=_r_cl, line=dict(color='#E91E63', width=0.5))])
+            _annots_cs.append(dict(x=_dx, y=0, text=f'D_c={st.session_state["D_c"]:.1f}',
+                showarrow=False, font=dict(size=10, color='#E91E63'), bgcolor='rgba(255,255,255,0.9)',
+                xshift=-5, textangle=-90))
 
-        fig_cs.update_layout(
-            xaxis=dict(scaleanchor='y', scaleratio=1, showgrid=False, zeroline=False, title='mm'),
-            yaxis=dict(showgrid=False, zeroline=False, title='mm'),
-            height=650, margin=dict(l=60, r=40, t=30, b=40),
-            plot_bgcolor='white', shapes=_shapes_cs, annotations=_annots_cs,
-            legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor='rgba(255,255,255,0.9)'))
-        st.plotly_chart(fig_cs, use_container_width=True)
+            # Tube callout
+            if N_p_val > 0:
+                _annots_cs.append(dict(x=_r_cl+_r_to+5, y=_r_to+15,
+                    text=f'OD={st.session_state["d_o"]:.1f}<br>ID={d_i:.1f}<br>t={st.session_state["t_thick"]:.2f}',
+                    showarrow=True, arrowhead=2, arrowcolor='#1565C0', ax=50, ay=-30,
+                    font=dict(size=9, color='#1565C0'), bgcolor='rgba(255,255,255,0.9)'))
+
+            fig_cs.update_layout(
+                xaxis=dict(scaleanchor='y', scaleratio=1, showgrid=False, zeroline=False, title='mm'),
+                yaxis=dict(showgrid=False, zeroline=False, title='mm'),
+                height=650, margin=dict(l=60, r=40, t=30, b=40),
+                plot_bgcolor='white', shapes=_shapes_cs, annotations=_annots_cs,
+                legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor='rgba(255,255,255,0.9)'))
+            st.plotly_chart(fig_cs, use_container_width=True)
 
     # ========== TAB 2: 종단면도 (전면 재작성) ==========
     with tab_ls:
