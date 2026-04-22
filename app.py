@@ -77,42 +77,38 @@ def safe_div(numerator, denominator, min_denom=EPSILON):
 
 
 def calc_tube_side(Re, Pr, curvature_ratio, d_i_m, t_k, v_tube, rho, L_tube, d_o, d_i):
-    """Tube 측 열전달 계수(h_i), 마찰계수(f_c), 압력손실(dp_bar) 통합 계산
-    
-    Returns:
-        dict: h_i, Nu, f_c, dp_bar, Re_crit, De, flow_regime
-    """
     De = Re * np.sqrt(max(0, curvature_ratio))
     Re_crit = RE_CRIT_BASE * (1.0 + RE_CRIT_CURVATURE_COEFF * np.sqrt(max(0, curvature_ratio)))
     
     is_laminar = Re < Re_crit
     
+    # 1. 순수 직관(Straight Tube) 마찰계수 및 열전달계수 계산
     if is_laminar:
-        # Ito correlation (laminar helical)
-        f_c = (64.0 / max(Re, 1.0)) * (1.0 + FRICTION_LAMINAR_LOG_COEFF * (np.log10(max(De, 1.0)))**4.0)
+        f_straight = 64.0 / max(Re, 1.0)
         Nu_straight = NU_LAMINAR_CONST
     else:
-        # Mishra-Gupta correlation (turbulent helical)
         f_straight = FRICTION_TURBULENT_A / (max(Re, 1.0) ** FRICTION_TURBULENT_EXP)
-        f_c = f_straight + FRICTION_TURBULENT_B * np.sqrt(max(0, curvature_ratio))
         Nu_straight = NU_TURBULENT_COEFF * (max(Re, 1.0) ** NU_TURBULENT_RE_EXP) * (Pr ** NU_TURBULENT_PR_EXP)
     
-    # Coil curvature Nu enhancement
+    # 2. 곡률 증폭 계수 (Dean Factor & Nu Enhancement) 계산
+    # 열전달(Nu) 증폭
     Nu = Nu_straight * (1.0 + CURVATURE_NU_FACTOR * curvature_ratio)
     h_i = (Nu * t_k) / max(d_i_m, EPSILON)
     
-    # Pressure drop (직관 마찰 + Dean Effect 보정)
-    dp_straight = f_c * (L_tube / max(d_i_m, EPSILON)) * (rho * v_tube**2 / 2.0)
-    
-    # Dean Effect 추가 압력 손실 (Mishra-Gupta correlation)
+    # 압력손실(Friction) 증폭 (Dean 보정 계수)
     if De > 1.0 and not is_laminar:
         dean_factor = 1.0 + DEAN_FRICTION_FACTOR * (De ** DEAN_FRICTION_EXP)
     elif De > 1.0 and is_laminar:
         dean_factor = 1.0 + DEAN_FRICTION_FACTOR * (De ** (DEAN_FRICTION_EXP * 0.5))
     else:
         dean_factor = 1.0
+        
+    # 3. 최종 헬리컬 코일 마찰계수 (직관 × 보정계수)
+    f_c = f_straight * dean_factor
     
-    dp_bar = (dp_straight * dean_factor) / 100000.0
+    # 4. 최종 압력 손실 계산 (이제 f_c 하나만 사용하면 됨)
+    dp_curved = f_c * (L_tube / max(d_i_m, EPSILON)) * (rho * v_tube**2 / 2.0)
+    dp_bar = dp_curved / 100000.0
     
     return {
         'h_i': h_i, 'Nu': Nu, 'f_c': f_c, 'dp_bar': dp_bar,
