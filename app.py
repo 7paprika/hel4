@@ -82,31 +82,25 @@ def calc_tube_side(Re, Pr, curvature_ratio, d_i_m, t_k, v_tube, rho, L_tube, d_o
     
     is_laminar = Re < Re_crit
     
-    # 1. 순수 직관(Straight Tube) 마찰계수 및 열전달계수 계산
     if is_laminar:
+        # 1. 층류(Laminar): 직관 마찰계수에 Ito 보정식 적용
         f_straight = 64.0 / max(Re, 1.0)
         Nu_straight = NU_LAMINAR_CONST
+        f_c = f_straight * (1.0 + FRICTION_LAMINAR_LOG_COEFF * (np.log10(max(De, 1.0)))**4.0)
     else:
+        # 2. 난류(Turbulent): Mishra-Gupta 상관식 자체가 최종 헬리컬 마찰계수임 (추가 곱셈 금지)
         f_straight = FRICTION_TURBULENT_A / (max(Re, 1.0) ** FRICTION_TURBULENT_EXP)
         Nu_straight = NU_TURBULENT_COEFF * (max(Re, 1.0) ** NU_TURBULENT_RE_EXP) * (Pr ** NU_TURBULENT_PR_EXP)
-    
-    # 2. 곡률 증폭 계수 (Dean Factor & Nu Enhancement) 계산
-    # 열전달(Nu) 증폭
+        f_c = f_straight + FRICTION_TURBULENT_B * np.sqrt(max(0, curvature_ratio))
+
+    # 열전달(Nu) 증폭 (곡률 효과)
     Nu = Nu_straight * (1.0 + CURVATURE_NU_FACTOR * curvature_ratio)
     h_i = (Nu * t_k) / max(d_i_m, EPSILON)
     
-    # 압력손실(Friction) 증폭 (Dean 보정 계수)
-    if De > 1.0 and not is_laminar:
-        dean_factor = 1.0 + DEAN_FRICTION_FACTOR * (De ** DEAN_FRICTION_EXP)
-    elif De > 1.0 and is_laminar:
-        dean_factor = 1.0 + DEAN_FRICTION_FACTOR * (De ** (DEAN_FRICTION_EXP * 0.5))
-    else:
-        dean_factor = 1.0
-        
-    # 3. 최종 헬리컬 코일 마찰계수 (직관 × 보정계수)
-    f_c = f_straight * dean_factor
+    # UI의 KPI 카드에 표시하기 위한 직관 대비 마찰 증가 비율 (단순 표시용)
+    dean_factor_display = f_c / f_straight if f_straight > 0 else 1.0
     
-    # 4. 최종 압력 손실 계산 (이제 f_c 하나만 사용하면 됨)
+    # 3. 최종 압력 손실 계산 (수식 통일: 최종 마찰계수 f_c 단일 적용)
     dp_curved = f_c * (L_tube / max(d_i_m, EPSILON)) * (rho * v_tube**2 / 2.0)
     dp_bar = dp_curved / 100000.0
     
@@ -114,7 +108,7 @@ def calc_tube_side(Re, Pr, curvature_ratio, d_i_m, t_k, v_tube, rho, L_tube, d_o
         'h_i': h_i, 'Nu': Nu, 'f_c': f_c, 'dp_bar': dp_bar,
         'Re_crit': Re_crit, 'De': De,
         'flow_regime': 'Laminar' if is_laminar else 'Turbulent',
-        'dean_factor': dean_factor
+        'dean_factor': dean_factor_display  # 이제 UI에서 10x가 아닌 1.1x ~ 1.3x 수준의 정상값을 보여줍니다.
     }
 
 
